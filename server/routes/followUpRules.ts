@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
-import { followUpRuleService } from '../services/followUpRulesService';
+import { followUpRulesService } from '../services/followUpRulesService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
@@ -20,7 +20,7 @@ followUpRuleRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const rules = await followUpRuleService.listRules(organizationId);
+      const rules = await followUpRulesService.listRules(organizationId);
       sendSuccess(res, { rules });
     } catch (err) {
       logger.error('Failed to list follow-up rules', {
@@ -42,7 +42,7 @@ followUpRuleRouter.post(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const rule = await followUpRuleService.createRule(organizationId, req.body as any);
+      const rule = await followUpRulesService.createRule(organizationId, req.body as any);
       sendSuccess(res, { rule }, 201);
     } catch (err) {
       logger.error('Failed to create follow-up rule', {
@@ -64,7 +64,7 @@ followUpRuleRouter.put(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const rule = await followUpRuleService.updateRule(organizationId, req.params.id as string, req.body as any);
+      const rule = await followUpRulesService.updateRule(organizationId, req.params.id as string, req.body as any);
 
       if (!rule) {
         return sendError(res, 'Follow-up rule not found.', 'FOLLOW_UP_RULE_NOT_FOUND', 404);
@@ -91,7 +91,7 @@ followUpRuleRouter.delete(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const result = await followUpRuleService.deleteRule(organizationId, req.params.id as string);
+      const result = await followUpRulesService.deleteRule(organizationId, req.params.id as string);
 
       if (result) {
         sendSuccess(res, { success: true });
