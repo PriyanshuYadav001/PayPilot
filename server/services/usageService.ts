@@ -1,15 +1,21 @@
 import { PLAN_LIMITS } from '@shared/constants';
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
-import { sendError, sendSuccess } from '../utils/response';
-import { Request, Response } from 'express';
 
-export type Metric = 'invoices_created' | 'whatsapp_sent' | 'emails_sent' | 'calls_made' | 'ai_analyses';
+export enum Metric {
+  invoices_created = 'invoices_created',
+  whatsapp_sent = 'whatsapp_sent',
+  emails_sent = 'emails_sent',
+  calls_made = 'calls_made',
+  ai_analyses = 'ai_analyses',
+}
 
-type UsageRecord = {
+export type MetricType = `${Metric}`;
+
+export type UsageRecord = {
   id: string;
   organization_id: string;
-  metric: Metric;
+  metric: MetricType;
   period_start: string;
   period_end: string;
   count: number;
@@ -17,223 +23,457 @@ type UsageRecord = {
   updated_at: string;
 };
 
-/** Map metric to the PLAN_LIMITS property name */
-const metricProperties: Record<Metric, string> = {
-  invoices_created: 'maxInvoicesMonthly',
-  whatsapp_sent: 'maxWhatsAppMonthly',
-  emails_sent: 'maxEmailsMonthly',
-  calls_made: 'maxCallsMonthly',
-  ai_analyses: 'maxAiAnalysesMonthly',
+const metricProperties: Record<MetricType, string> = {
+  [Metric.invoices_created]: 'maxInvoicesMonthly',
+  [Metric.whatsapp_sent]: 'maxWhatsAppMonthly',
+  [Metric.emails_sent]: 'maxEmailsMonthly',
+  [Metric.calls_made]: 'maxCallsMonthly',
+  [Metric.ai_analyses]: 'maxAiAnalysesMonthly',
 };
 
-/** Get the plan tier for an organization */
-async function getPlanTier(organizationId: string): Promise<string> {
+/**
+ * Get the current subscription plan for an organization.
+ */
+async function getPlanTier(
+  organizationId: string,
+): Promise<string> {
   const { data: subscription, error } = await supabaseServer
     .from('subscriptions')
     .select('plan_tier')
     .eq('organization_id', organizationId)
-    .single();
+    .maybeSingle();
 
-  if (error || !subscription) return 'free_trial';
+  if (error || !subscription) {
+    return 'free_trial';
+  }
+
   return subscription.plan_tier as string;
 }
 
-/** Get the period start/end for a metric and date */
-function getPeriodStartEnd(metric: Metric, now: Date): { period_start: string; period_end: string } {
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const periodStart = new Date(year, month - 1, 1).toISOString();
-  const periodEnd = new Date(year, month, 1, 0, 0, 0).toISOString();
-  return { period_start: periodStart, period_end: periodEnd };
+/**
+ * Get the monthly usage period.
+ *
+ * We use UTC here so the application behaves consistently
+ * regardless of the server's local timezone.
+ */
+function getPeriodStartEnd(
+  _metric: MetricType,
+  now: Date,
+): {
+  period_start: string;
+  period_end: string;
+} {
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth();
+
+  const periodStart = new Date(
+    Date.UTC(year, month, 1, 0, 0, 0, 0),
+  );
+
+  const periodEnd = new Date(
+    Date.UTC(year, month + 1, 1, 0, 0, 0, 0),
+  );
+
+  return {
+    period_start: periodStart.toISOString(),
+    period_end: periodEnd.toISOString(),
+  };
 }
 
-/** Get plan limits for a given tier, returns the limits object */
+/**
+ * Get the limits configured for a plan.
+ */
 function getPlanLimits(planTier: string) {
-  const limits = PLAN_LIMITS[planTier as keyof typeof PLAN_LIMITS];
-  return limits;
+  return PLAN_LIMITS[
+    planTier as keyof typeof PLAN_LIMITS
+  ];
 }
 
-/** Check whether the organization has exceeded its usage limit for the given metric */
+/**
+ * Get the numeric limit for a particular metric.
+ */
+function getMetricLimit(
+  planTier: string,
+  metric: MetricType,
+): number {
+  const planLimits = getPlanLimits(planTier);
+
+  if (!planLimits) {
+    return 0;
+  }
+
+  const propertyName = metricProperties[metric];
+
+  const value = (
+    planLimits as Record<string, unknown>
+  )[propertyName];
+
+  return typeof value === 'number' ? value : 0;
+}
+
+/**
+ * Check whether an organization can consume additional usage.
+ *
+ * IMPORTANT:
+ * This function ONLY checks the limit.
+ * It does NOT record usage.
+ */
 export async function checkLimit(
   organizationId: string,
-  metric: Metric,
+  metric: MetricType,
   count: number = 1,
-): Promise<{ exceeded: boolean; remaining: number; limit: number }> {
-  const now = new Date();
-  const { period_start, period_end } = getPeriodStartEnd(metric, now);
+): Promise<{
+  exceeded: boolean;
+  remaining: number;
+  limit: number;
+}> {
+  if (count <= 0) {
+    throw new Error(
+      'Usage count must be greater than zero.',
+    );
+  }
 
-  // Query usage records for this organization and metric (current and previous periods)
+  const now = new Date();
+
+  const {
+    period_start,
+    period_end,
+  } = getPeriodStartEnd(metric, now);
+
   const { data: records, error } = await supabaseServer
     .from('usage_records')
-    .select('count')
-    .eq('organization_id', organizationId)
-    .eq('metric', metric);
-
-  if (error) {
-    logger.error('Usage limit check failed', { error: error.message, organizationId, metric });
-    return { exceeded: true, remaining: 0, limit: 0 };
-  }
-
-  // Calculate total usage for this period by filtering records client-side
-  let totalUsed = 0;
-  const recordsArray = records || [];
-  for (const record of recordsArray) {
-    const recordPeriodStart = new Date(record.period_start);
-    const recordPeriodEnd = new Date(record.period_end);
-    if (recordPeriodStart >= period_start && recordPeriodEnd <= period_end) {
-      totalUsed += (record as { count: number }).count;
-    }
-  }
-
-  // Get the plan tier and limit
-  const planTier = await getPlanTier(organizationId);
-  const planLimits = getPlanLimits(planTier);
-  const limitValue = planLimits
-    ? (planLimits as any)[metricProperties[metric]]
-    : 0;
-
-  const remaining = Math.max(0, limitValue - totalUsed);
-  const exceeded = totalUsed + count > (limitValue || 0);
-
-  return { exceeded, remaining, limit: typeof limitValue === 'number' ? limitValue : 0 };
-}
-
-/** Record usage increment for the given metric */
-export async function recordUsage(
-  organizationId: string,
-  metric: Metric,
-  count: number = 1,
-): Promise<UsageRecord | null> {
-  const now = new Date();
-  const { period_start, period_end } = getPeriodStartEnd(metric, now);
-
-  // Check if there's already a record for this period
-  const { data: existingRecord, error: existingError } = await supabaseServer
-    .from('usage_records')
-    .select('id, count')
+    .select(
+      'count, period_start, period_end',
+    )
     .eq('organization_id', organizationId)
     .eq('metric', metric)
     .gte('period_start', period_start)
-    .lt('period_end', period_end)
-    .single();
+    .lt('period_start', period_end);
 
-  if (existingError || !existingRecord) {
-    // Create new record
-    const { data, error } = await supabaseServer
-      .from('usage_records')
-      .insert({
-        organization_id: organizationId,
-        metric,
-        period_start: period_start,
-        period_end: period_end,
-        count,
-      })
-      .select()
-      .single();
+  if (error) {
+    logger.error('Usage limit check failed', {
+      error: error.message,
+      organizationId,
+      metric,
+    });
 
-    if (error) {
-      logger.error('Usage record creation failed', { error: error.message, organizationId, metric });
-      return null;
-    }
-
-    return data as UsageRecord;
-  } else {
-    // Update existing record
-    const newCount = (existingRecord as { count: number }).count + count;
-    const { data, error } = await supabaseServer
-      .from('usage_records')
-      .update({ count: newCount })
-      .eq('id', existingRecord.id)
-      .select()
-      .single();
-
-    if (error) {
-      logger.error('Usage record update failed', { error: error.message, organizationId, metric });
-      return null;
-    }
-
-    return data as UsageRecord;
+    // Fail closed.
+    // If we cannot verify usage, do not allow
+    // the organization to consume more usage.
+    return {
+      exceeded: true,
+      remaining: 0,
+      limit: 0,
+    };
   }
+
+  const totalUsed = (records ?? []).reduce(
+    (sum, record) =>
+      sum + Number(record.count ?? 0),
+    0,
+  );
+
+  const planTier =
+    await getPlanTier(organizationId);
+
+  const limitValue =
+    getMetricLimit(planTier, metric);
+
+  const remaining = Math.max(
+    0,
+    limitValue - totalUsed,
+  );
+
+  const exceeded =
+    totalUsed + count > limitValue;
+
+  return {
+    exceeded,
+    remaining,
+    limit: limitValue,
+  };
 }
 
-/** Get usage history for the given metric */
-export async function getUsage(
+/**
+ * Record usage for the current monthly period.
+ */
+export async function recordUsage(
   organizationId: string,
-  metric: Metric,
-  limit: number = 12,
-): Promise<UsageRecord[]> {
-  const { data, error } = await supabaseServer
+  metric: MetricType,
+  count: number = 1,
+): Promise<UsageRecord | null> {
+  if (count <= 0) {
+    throw new Error(
+      'Usage count must be greater than zero.',
+    );
+  }
+
+  const now = new Date();
+
+  const {
+    period_start,
+    period_end,
+  } = getPeriodStartEnd(metric, now);
+
+  /*
+   * Find the usage record for this organization,
+   * metric and billing period.
+   */
+  const {
+    data: existingRecord,
+    error: existingError,
+  } = await supabaseServer
     .from('usage_records')
     .select('*')
     .eq('organization_id', organizationId)
     .eq('metric', metric)
-    .order('period_start', { ascending: false })
+    .eq('period_start', period_start)
+    .eq('period_end', period_end)
+    .maybeSingle();
+
+  if (existingError) {
+    logger.error(
+      'Usage record lookup failed',
+      {
+        error: existingError.message,
+        organizationId,
+        metric,
+      },
+    );
+
+    return null;
+  }
+
+  /*
+   * No record exists for this month.
+   * Create one.
+   */
+  if (!existingRecord) {
+    const {
+      data,
+      error,
+    } = await supabaseServer
+      .from('usage_records')
+      .insert({
+        organization_id: organizationId,
+        metric,
+        period_start,
+        period_end,
+        count,
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      logger.error(
+        'Usage record creation failed',
+        {
+          error: error.message,
+          organizationId,
+          metric,
+        },
+      );
+
+      return null;
+    }
+
+    return data as UsageRecord;
+  }
+
+  /*
+   * Record already exists.
+   * Increment its count.
+   */
+  const newCount =
+    Number(existingRecord.count ?? 0) +
+    count;
+
+  const {
+    data,
+    error,
+  } = await supabaseServer
+    .from('usage_records')
+    .update({
+      count: newCount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', existingRecord.id)
+    .select('*')
+    .single();
+
+  if (error) {
+    logger.error(
+      'Usage record update failed',
+      {
+        error: error.message,
+        organizationId,
+        metric,
+      },
+    );
+
+    return null;
+  }
+
+  return data as UsageRecord;
+}
+
+/**
+ * Get usage history for a metric.
+ */
+export async function getUsage(
+  organizationId: string,
+  metric: MetricType,
+  limit: number = 12,
+): Promise<UsageRecord[]> {
+  const {
+    data,
+    error,
+  } = await supabaseServer
+    .from('usage_records')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('metric', metric)
+    .order('period_start', {
+      ascending: false,
+    })
     .limit(limit);
 
   if (error) {
-    logger.error('Failed to get usage history', { error: error.message, organizationId, metric });
+    logger.error(
+      'Failed to get usage history',
+      {
+        error: error.message,
+        organizationId,
+        metric,
+      },
+    );
+
     return [];
   }
 
-  return data as UsageRecord[];
+  return (data ?? []) as UsageRecord[];
 }
 
-/** Get remaining usage for the given metric */
+/**
+ * Get current-period usage and remaining quota.
+ */
 export async function getRemainingUsage(
   organizationId: string,
-  metric: Metric,
-  includeLimit: boolean = true,
+  metric: MetricType,
 ) {
   const now = new Date();
-  const { period_start, period_end } = getPeriodStartEnd(metric, now);
 
-  // Query usage records for this period
-  const { data: records, error } = await supabaseServer
+  const {
+    period_start,
+    period_end,
+  } = getPeriodStartEnd(metric, now);
+
+  const {
+    data: records,
+    error,
+  } = await supabaseServer
     .from('usage_records')
     .select('count')
     .eq('organization_id', organizationId)
     .eq('metric', metric)
     .gte('period_start', period_start)
-    .lt('period_end', period_end);
+    .lt('period_start', period_end);
 
   if (error) {
-    logger.error('Failed to get remaining usage', { error: error.message, organizationId, metric });
-    return { remaining: 0, limit: 0, used: 0, metric };
+    logger.error(
+      'Failed to get remaining usage',
+      {
+        error: error.message,
+        organizationId,
+        metric,
+      },
+    );
+
+    return {
+      remaining: 0,
+      limit: 0,
+      used: 0,
+      metric,
+    };
   }
 
-  // Calculate total used
-  let totalUsed = 0;
-  const recordsArray = records || [];
-  for (const record of recordsArray) {
-    totalUsed += (record as { count: number }).count;
-  }
+  const totalUsed = (records ?? []).reduce(
+    (sum, record) =>
+      sum + Number(record.count ?? 0),
+    0,
+  );
 
-  // Get the plan tier and limit
-  const planTier = await getPlanTier(organizationId);
-  const planLimits = getPlanLimits(planTier);
-  const limitValue = planLimits
-    ? (planLimits as any)[metricProperties[metric]]
-    : 0;
+  const planTier =
+    await getPlanTier(organizationId);
+
+  const limitValue =
+    getMetricLimit(planTier, metric);
 
   return {
-    remaining: Math.max(0, limitValue - totalUsed),
-    limit: typeof limitValue === 'number' ? limitValue : 0,
+    remaining: Math.max(
+      0,
+      limitValue - totalUsed,
+    ),
+    limit: limitValue,
     used: totalUsed,
     metric,
   };
 }
 
-/** Convenience: check limit and record usage in one call */
+/**
+ * Check usage limit and then record usage.
+ *
+ * Use this when the operation has already been
+ * successfully completed or when consuming usage
+ * before the operation is acceptable.
+ *
+ * For invoice creation, we intentionally use
+ * checkLimit() first and recordUsage() only after
+ * the invoice is successfully created.
+ */
 export async function checkAndRecordUsage(
   organizationId: string,
-  metric: Metric,
+  metric: MetricType,
   count: number = 1,
-) {
-  const { exceeded, remaining, limit: limitValue } = await checkLimit(organizationId, metric, count);
+): Promise<{
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+}> {
+  const result = await checkLimit(
+    organizationId,
+    metric,
+    count,
+  );
 
-  if (!exceeded) {
-    await recordUsage(organizationId, metric, count);
+  if (result.exceeded) {
+    return {
+      allowed: false,
+      remaining: result.remaining,
+      limit: result.limit,
+    };
   }
 
-  return { allowed: !exceeded, remaining: remaining, limit: limitValue };
+  const recorded = await recordUsage(
+    organizationId,
+    metric,
+    count,
+  );
+
+  if (!recorded) {
+    return {
+      allowed: false,
+      remaining: result.remaining,
+      limit: result.limit,
+    };
+  }
+
+  return {
+    allowed: true,
+    remaining: Math.max(
+      0,
+      result.remaining - count,
+    ),
+    limit: result.limit,
+  };
 }
