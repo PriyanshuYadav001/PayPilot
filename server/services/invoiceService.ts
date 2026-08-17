@@ -1,7 +1,7 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import type { Customer, Invoice, InvoiceItem, InvoiceStatus } from '../../shared/types';
-import { checkAndRecordUsage, Metric } from '../../services/usageService';
+import { checkAndRecordUsage, Metric } from './usageService';
 
 export interface InvoiceItemInput {
   description: string;
