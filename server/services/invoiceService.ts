@@ -1,6 +1,9 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import type {
+  Invoice,
+  InvoiceItem,
+  Customer,
   InvoiceStatus,
 } from '../../shared/types';
 
