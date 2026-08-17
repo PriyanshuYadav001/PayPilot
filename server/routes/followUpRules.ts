@@ -20,7 +20,17 @@ followUpRuleRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const rules = await followUpRulesService.listRules(organizationId);
+      const rules = await followUpRulesService.listRules(organizationId, {
+  page: Number(req.query.page) || 1,
+  limit: Number(req.query.limit) || 20,
+  isActive:
+  req.query.isActive === 'true' || req.query.isActive === 'false'
+    ? req.query.isActive
+    : undefined,
+  channel: req.query.channel as string | undefined,
+  sortBy: (req.query.sortBy as string) || 'escalation_priority',
+  sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc',
+});
       sendSuccess(res, { rules });
     } catch (err) {
       logger.error('Failed to list follow-up rules', {
