@@ -71,32 +71,6 @@ export interface InvoiceSearchInput {
 }
 
 /* =========================================================
-   DATABASE TYPES
-   ========================================================= */
-
-export interface Invoice {
-  id: string;
-  organization_id: string;
-  customer_id: string;
-  invoice_number: string;
-  issue_date: string;
-  due_date: string;
-  currency: string;
-  subtotal: number;
-  tax_total: number;
-  discount: number;
-  total_amount: number;
-  amount_paid: number;
-  amount_due: number;
-  status: InvoiceStatus;
-  notes?: string;
-  terms_and_conditions?: string;
-  created_by?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-/* =========================================================
    ERROR
    ========================================================= */
 
