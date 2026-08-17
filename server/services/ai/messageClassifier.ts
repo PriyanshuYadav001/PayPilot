@@ -24,6 +24,12 @@ import {
 } from '../../validators/ai';
 import { checkAndRecordUsage, Metric } from '../../services/usageService';
 
+export interface ClassifyResult {
+  output: ClassifiedOutput;
+  warnings: string[];
+  injectionDetected: boolean;
+}
+
 // ─── Prompt Injection Guards ────────────────────────────────────────────────
 
 const INJECTION_PATTERNS = [
@@ -32,7 +38,9 @@ const INJECTION_PATTERNS = [
 
 // ─── Usage Limit Guards ────────────────────────────────────────────────────
 
-function canAnalyzeAI(organizationId: string): { allowed: boolean; remaining: number; limit: number } {
+async function canAnalyzeAI(
+  organizationId: string
+): Promise<{ allowed: boolean; remaining: number; limit: number }> {
   return checkAndRecordUsage(organizationId, Metric.ai_analyses, 1);
 }
 

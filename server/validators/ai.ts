@@ -102,6 +102,7 @@ export type DisputeData = z.infer<typeof DisputeOutput>;
 // ─── Input schema for the classifier ───────────────────────────────────────
 
 export const ClassifyMessageInputSchema = z.object({
+  organizationId: z.string().uuid().optional(),
   rawText: z.string().min(1).max(10000),
   channel: z.enum(['email', 'whatsapp', 'call_transcript']),
   customerName: z.string().optional(),
