@@ -85,14 +85,28 @@ export async function listInvoices(
   token: string,
   params: InvoiceListParams = {}
 ): Promise<InvoiceListResult> {
-  const response = await apiRequest<{ invoices: Invoice[] }>(`/invoices${buildQuery(params)}`, {
+  const response = await apiRequest<{
+    invoices: {
+      data: Invoice[];
+      total: number;
+      page: number;
+      lastPage: number;
+    };
+  }>(`/invoices${buildQuery(params)}`, {
     orgId,
     token,
   });
+
   const data = throwOnFailure(response, 'Failed to load invoices.');
+
   return {
-    invoices: data.invoices,
-    pagination: response.pagination ?? DEFAULT_PAGINATION,
+    invoices: data.invoices.data,
+    pagination: {
+      page: data.invoices.page,
+      limit: params.limit ?? 20,
+      totalCount: data.invoices.total,
+      totalPages: data.invoices.lastPage,
+    },
   };
 }
 

@@ -216,23 +216,38 @@ export async function listInvoices(
   page: number = 1,
   limit: number = 50,
 ): Promise<InvoicePage> {
-  const { data: invoices, error } = await supabaseServer
+  let query = supabaseServer
     .from('invoices')
     .select('*', { count: 'exact' })
-    .eq('organization_id', organizationId)
+    .eq('organization_id', organizationId);
 
-    .eq('customer_id', customerId ?? undefined)
-    .eq('status', status ?? undefined)
-    .ilike('invoice_number', `%${searchTerm ?? ''}%`)
+  if (customerId) {
+    query = query.eq('customer_id', customerId);
+  }
+
+  if (status) {
+    query = query.eq('status', status);
+  }
+
+  if (searchTerm?.trim()) {
+    query = query.ilike('invoice_number', `%${searchTerm.trim()}%`);
+  }
+
+  const { data: invoices, error, count } = await query
     .order('created_at', { ascending: false })
     .range((page - 1) * limit, page * limit - 1);
 
   if (error) {
-    logger.error('Failed to list invoices', error.message);
+    logger.error('Failed to list invoices', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
     throw new InvoiceError('Failed to list invoices.', 'LIST_INVOICES_FAILED', 500);
   }
 
-  const total = (invoices as Invoice[]).length;
+  const total = count ?? 0;
 
   return {
     data: invoices as Invoice[],

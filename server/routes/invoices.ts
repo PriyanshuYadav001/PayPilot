@@ -4,7 +4,6 @@ import { requireOrgContext } from '../middleware/tenant';
 import { invoiceService } from '../services/invoiceService';
 import { validateBody, validateParams } from '../middleware/validate';
 import { invoiceCreateSchema, invoiceIdParamSchema, invoiceUpdateSchema } from '../validators/invoice';
-import { invoiceService as invoiceServiceExport } from '../services/invoiceService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
@@ -91,7 +90,7 @@ invoiceRouter.post(
  * PUT /api/invoices/:id
  * Update an invoice - OWNER, ADMIN can write
  */
-invoiceRouter.put(
+invoiceRouter.patch(
   '/:id',
   requirePermission('invoices.write'),
   validateParams(invoiceIdParamSchema),
@@ -99,7 +98,11 @@ invoiceRouter.put(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const invoice = await invoiceService.updateInvoice(organizationId, req.params.id as string, req.body as any);
+      const invoice = await invoiceService.updateInvoice(
+        organizationId,
+        req.params.id as string,
+        req.body as any
+      );
 
       if (!invoice) {
         return sendError(res, 'Invoice not found.', 'INVOICE_NOT_FOUND', 404);
@@ -111,7 +114,13 @@ invoiceRouter.put(
         error: err instanceof Error ? err.message : String(err),
         organizationId: req.tenant!.organizationId,
       });
-      sendError(res, 'Failed to update invoice.', 'UPDATE_INVOICE_FAILED', 500);
+
+      sendError(
+        res,
+        'Failed to update invoice.',
+        'UPDATE_INVOICE_FAILED',
+        500
+      );
     }
   }
 );
@@ -122,25 +131,30 @@ invoiceRouter.put(
  */
 invoiceRouter.delete(
   '/:id',
-  requirePermission('invoices.write'), // OWNER only in practice, but permission check handles it
+  requirePermission('invoices.write'),
   validateParams(invoiceIdParamSchema),
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const result = await invoiceService.deleteInvoice(organizationId, req.params.id as string);
 
-      if (result) {
-        sendSuccess(res, { success: true });
-      } else {
-        sendError(res, 'Invoice not found.', 'INVOICE_NOT_FOUND', 404);
-      }
+      await invoiceService.deleteInvoice(
+        organizationId,
+        req.params.id as string
+      );
+
+      sendSuccess(res, { success: true });
     } catch (err) {
       logger.error('Failed to delete invoice', {
         error: err instanceof Error ? err.message : String(err),
         organizationId: req.tenant!.organizationId,
       });
-      sendError(res, 'Failed to delete invoice.', 'DELETE_INVOICE_FAILED', 500);
+
+      sendError(
+        res,
+        'Failed to delete invoice.',
+        'DELETE_INVOICE_FAILED',
+        500
+      );
     }
   }
 );
-
