@@ -1,0 +1,86 @@
+# ==============================================================================
+# PAYPILOT - ENVIRONMENT CONFIGURATION TEMPLATE
+# Copy this file to .env before starting the application.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. SERVER & APPLICATION RUNTIME
+# ------------------------------------------------------------------------------
+NODE_ENV=development
+PORT=5000
+APP_URL=http://localhost:5173
+API_URL=http://localhost:5000/api/v1
+CORS_ORIGIN=http://localhost:5173
+
+# ------------------------------------------------------------------------------
+# 2. SUPABASE (DATABASE, AUTH, STORAGE)
+# ------------------------------------------------------------------------------
+# Obtain from your Supabase Project Settings -> API
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOi...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...
+SUPABASE_DB_URL=postgresql://postgres.your-project-ref:password@aws-0-region.pooler.supabase.com:6543/postgres
+SUPABASE_JWT_SECRET=your-supabase-jwt-secret-from-api-settings
+
+# Storage Buckets
+SUPABASE_INVOICES_BUCKET=invoices-private
+SUPABASE_RECORDINGS_BUCKET=call-recordings-private
+
+# ------------------------------------------------------------------------------
+# 3. PAYMENT PROVIDER (RAZORPAY)
+# ------------------------------------------------------------------------------
+PAYMENT_PROVIDER=razorpay
+RAZORPAY_KEY_ID=rzp_test_YourKeyIdHere
+RAZORPAY_KEY_SECRET=YourKeySecretHere
+RAZORPAY_WEBHOOK_SECRET=YourWebhookSecretHere
+
+# ------------------------------------------------------------------------------
+# 4. EMAIL PROVIDER (RESEND / SENDGRID)
+# ------------------------------------------------------------------------------
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_123456789_abcdef
+RESEND_WEBHOOK_SECRET=whsec_abcdef123456
+EMAIL_FROM_ADDRESS=billing@paypilot.io
+EMAIL_FROM_NAME="PayPilot Collections"
+
+# ------------------------------------------------------------------------------
+# 5. WHATSAPP PROVIDER (META CLOUD API / TWILIO)
+# ------------------------------------------------------------------------------
+WHATSAPP_PROVIDER=meta
+META_WHATSAPP_API_TOKEN=EAA...
+META_WHATSAPP_PHONE_NUMBER_ID=100000000000000
+META_WHATSAPP_BUSINESS_ACCOUNT_ID=200000000000000
+META_WHATSAPP_WEBHOOK_VERIFY_TOKEN=your_secure_verify_token_phrase
+
+# Alternative: Twilio WhatsApp
+TWILIO_ACCOUNT_SID=ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+TWILIO_AUTH_TOKEN=your_auth_token_here
+TWILIO_WHATSAPP_NUMBER=+14155238886
+
+# ------------------------------------------------------------------------------
+# 6. VOICE CALL PROVIDER (TWILIO / EXOTEL)
+# ------------------------------------------------------------------------------
+CALL_PROVIDER=twilio
+TWILIO_CALL_PHONE_NUMBER=+12000000000
+TWILIO_TWIML_APP_SID=APXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+# ------------------------------------------------------------------------------
+# 7. AI ENGINE (GEMINI / OPENAI)
+# ------------------------------------------------------------------------------
+AI_PROVIDER=gemini
+GEMINI_API_KEY=AIzaSy...
+# Alternative: OpenAI
+OPENAI_API_KEY=sk-...
+
+# ------------------------------------------------------------------------------
+# 8. RATE LIMITING & SECURITY
+# ------------------------------------------------------------------------------
+RATE_LIMIT_WINDOW_MS=900000 # 15 minutes
+RATE_LIMIT_MAX_REQUESTS=300
+
+# ------------------------------------------------------------------------------
+# 9. CLIENT / FRONTEND ENVIRONMENT VARIABLES (Vite prefix)
+# ------------------------------------------------------------------------------
+VITE_API_URL=http://localhost:5000/api/v1
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOi...
