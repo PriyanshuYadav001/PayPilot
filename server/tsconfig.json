@@ -8,18 +8,24 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+
     "outDir": "../dist/server",
     "rootDir": "../",
     "baseUrl": "..",
+
     "paths": {
       "@shared/*": ["shared/*"],
       "@server/*": ["server/*"]
-    }
+    },
+
+    "ignoreDeprecations": "6.0"
   },
+
   "include": [
     "**/*",
     "../shared/**/*"
   ],
+
   "exclude": [
     "../node_modules",
     "../dist",
