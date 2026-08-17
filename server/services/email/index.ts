@@ -25,7 +25,13 @@ export function initializeEmailProvider(): void {
 }
 
 export { ResendEmailProvider } from './ResendEmailProvider';
-export { emailService } from './emailService';
+export {
+  sendInvoiceReminder,
+  sendOverdueReminder,
+  sendPaymentLink,
+  sendPaymentConfirmation,
+  sendPaymentPromiseReminder,
+} from './emailService';
 export {
   buildInvoiceReminderEmail,
   buildOverdueReminderEmail,

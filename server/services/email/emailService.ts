@@ -208,6 +208,41 @@ export async function sendPaymentLink(input: FollowUpEmailContext): Promise<void
   );
 }
 
+export async function sendPaymentConfirmation(
+  input: FollowUpEmailContext,
+): Promise<void> {
+  const { organizationId } = input;
+
+  const { allowed } = await checkEmailUsage(organizationId);
+
+  if (!allowed) {
+    throw new Error(
+      'Plan limit reached: Your subscription does not include sending emails.',
+    );
+  }
+
+  const ctx = await loadEmailContext(input);
+
+  const email = buildPaymentConfirmationEmail({
+    customerName: ctx.customer.contactName,
+    businessName: ctx.businessName,
+    invoiceNumber: ctx.invoice.invoiceNumber,
+    amountDue: ctx.invoice.amountDue,
+    currency: ctx.invoice.currency,
+    dueDate: ctx.invoice.dueDate,
+  });
+
+  await sendWithRetry(
+    organizationId,
+    ctx.customer.id,
+    ctx.invoice.id,
+    email.subject,
+    email.html,
+    email.text,
+    {},
+  );
+}
+
 export async function sendPaymentPromiseReminder(input: FollowUpEmailContext): Promise<void> {
   const { organizationId } = input;
 
