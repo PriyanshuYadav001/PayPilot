@@ -101,4 +101,3 @@ customerRouter.put(
   }
 );
 
-export const customerRouter;
