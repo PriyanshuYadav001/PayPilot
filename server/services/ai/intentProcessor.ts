@@ -253,7 +253,7 @@ export async function processIntent(
       rawText: ctx.rawMessage,
       channel: ctx.channel,
       customerName: ctx.customerName,
-    });
+    }, ctx.organizationId);
   }
 
   const { output, warnings, injectionDetected } = classifyResult;

@@ -94,14 +94,25 @@ async function resolvePaymentLinkUrl(organizationId: string, invoiceId: string):
   }
 }
 
-function canSendEmails(organizationId: string): { allowed: boolean; remaining: number; limit: number } {
-  return checkAndRecordUsage(organizationId, Metric.emails_sent, 1);
+async function canSendEmails(
+  organizationId: string,
+): Promise<{ allowed: boolean; remaining: number; limit: number }> {
+  return await checkAndRecordUsage(
+    organizationId,
+    Metric.emails_sent,
+    1,
+  );
 }
 
 // Check if the organization has remaining email quota before sending
-async function checkEmailUsage(organizationId: string): Promise<{ allowed: boolean; remaining: number; limit: number }> {
-  const { allowed } = await checkAndRecordUsage(organizationId, Metric.emails_sent, 1);
-  return { allowed };
+async function checkEmailUsage(
+  organizationId: string,
+): Promise<{ allowed: boolean; remaining: number; limit: number }> {
+  return await checkAndRecordUsage(
+    organizationId,
+    Metric.emails_sent,
+    1,
+  );
 }
 
 export async function sendInvoiceReminder(input: FollowUpEmailContext): Promise<void> {
@@ -114,14 +125,22 @@ export async function sendInvoiceReminder(input: FollowUpEmailContext): Promise<
   }
 
   const ctx = await loadEmailContext(input);
+  const email = buildInvoiceReminderEmail({
+    customerName: ctx.customer.contactName,
+    invoiceNumber: ctx.invoice.invoiceNumber,
+    amountDue: ctx.invoice.amountDue,
+    currency: ctx.invoice.currency,
+    dueDate: ctx.invoice.dueDate,
+    businessName: ctx.businessName,
+  });
 
   await sendWithRetry(
     organizationId,
     ctx.customer.id,
     ctx.invoice.id,
-    'Invoice Reminder',
-    buildInvoiceReminderEmail(ctx),
-    buildInvoiceReminderEmail(ctx).replace(/<[^>]+>/g, ''),
+    email.subject,
+    email.html,
+    email.text,
     {},
   );
 }
@@ -136,14 +155,22 @@ export async function sendOverdueReminder(input: FollowUpEmailContext): Promise<
   }
 
   const ctx = await loadEmailContext(input);
+  const email = buildOverdueReminderEmail({
+    customerName: ctx.customer.contactName,
+    invoiceNumber: ctx.invoice.invoiceNumber,
+    amountDue: ctx.invoice.amountDue,
+    currency: ctx.invoice.currency,
+    dueDate: ctx.invoice.dueDate,
+    businessName: ctx.businessName,
+  });
 
   await sendWithRetry(
     organizationId,
     ctx.customer.id,
     ctx.invoice.id,
-    'Overdue Reminder',
-    buildOverdueReminderEmail(ctx),
-    buildOverdueReminderEmail(ctx).replace(/<[^>]+>/g, ''),
+    email.subject,
+    email.html,
+    email.text,
     {},
   );
 }
@@ -160,13 +187,23 @@ export async function sendPaymentLink(input: FollowUpEmailContext): Promise<void
   const ctx = await loadEmailContext(input);
   const paymentUrl = await resolvePaymentLinkUrl(organizationId, ctx.invoice.id);
 
+  const email = buildPaymentLinkEmail({
+  customerName: ctx.customer.contactName,
+  businessName: ctx.businessName,
+  invoiceNumber: ctx.invoice.invoiceNumber,
+  amountDue: ctx.invoice.amountDue,
+  currency: ctx.invoice.currency,
+  dueDate: ctx.invoice.dueDate,
+  paymentLinkUrl: paymentUrl,
+});
+
   await sendWithRetry(
     organizationId,
     ctx.customer.id,
     ctx.invoice.id,
-    'Payment Link',
-    buildPaymentLinkEmail(ctx, paymentUrl),
-    buildPaymentLinkEmail(ctx, paymentUrl).replace(/<[^>]+>/g, ''),
+    email.subject,
+    email.html,
+    email.text,
     { paymentUrl },
   );
 }
@@ -174,21 +211,32 @@ export async function sendPaymentLink(input: FollowUpEmailContext): Promise<void
 export async function sendPaymentPromiseReminder(input: FollowUpEmailContext): Promise<void> {
   const { organizationId } = input;
 
-  // Check email usage limit before sending
   const { allowed } = await checkEmailUsage(organizationId);
+
   if (!allowed) {
-    throw new Error('Plan limit reached: Your subscription does not include sending emails.');
+    throw new Error(
+      'Plan limit reached: Your subscription does not include sending emails.',
+    );
   }
 
   const ctx = await loadEmailContext(input);
+
+  const email = buildPaymentPromiseReminderEmail({
+    customerName: ctx.customer.contactName,
+    businessName: ctx.businessName,
+    invoiceNumber: ctx.invoice.invoiceNumber,
+    amountDue: ctx.invoice.amountDue,
+    currency: ctx.invoice.currency,
+    dueDate: ctx.invoice.dueDate,
+  });
 
   await sendWithRetry(
     organizationId,
     ctx.customer.id,
     ctx.invoice.id,
-    'Payment Promise Reminder',
-    buildPaymentPromiseReminderEmail(ctx),
-    buildPaymentPromiseReminderEmail(ctx).replace(/<[^>]+>/g, ''),
+    email.subject,
+    email.html,
+    email.text,
     {},
   );
 }
