@@ -22,8 +22,32 @@ invoiceRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const invoices = await invoiceService.listInvoices(organizationId);
-      sendSuccess(res, { invoices });
+
+const page = Number(req.query.page) || 1;
+const limit = Number(req.query.limit) || 20;
+const searchTerm =
+  typeof req.query.search === 'string'
+    ? req.query.search
+    : undefined;
+const customerId =
+  typeof req.query.customerId === 'string'
+    ? req.query.customerId
+    : undefined;
+const status =
+  typeof req.query.status === 'string'
+    ? (req.query.status as any)
+    : undefined;
+
+const invoices = await invoiceService.listInvoices(
+  organizationId,
+  customerId,
+  status,
+  searchTerm,
+  page,
+  limit
+);
+
+sendSuccess(res, { invoices });
     } catch (err) {
       logger.error('Failed to list invoices', {
         error: err instanceof Error ? err.message : String(err),
