@@ -1,7 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
-import { subscriptionService, SubscriptionDetails, SubscriptionUsage, CheckoutSession, CancelSubscriptionResponse, handleWebhookEvent } from '../services/subscriptionService';
+import {
+  getSubscriptionDetails,
+  getSubscriptionUsage,
+  createCheckoutSession,
+  cancelSubscription,
+  handleWebhookEvent,
+} from '../services/subscriptionService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 
@@ -18,7 +24,7 @@ subscriptionRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const details = await subscriptionService.getSubscriptionDetails(organizationId);
+      const details = await getSubscriptionDetails(organizationId);
 
       if (!details) {
         return sendError(res, 'No subscription found for this organization.', 'NO_SUBSCRIPTION', 404);
@@ -44,7 +50,7 @@ subscriptionRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const usage = await subscriptionService.getSubscriptionUsage(organizationId);
+      const usage = await getSubscriptionUsage(organizationId);
 
       if (!usage) {
         return sendError(res, 'Failed to retrieve usage metrics.', 'USAGE_RETRIEVE_FAILED', 500);
@@ -85,7 +91,7 @@ subscriptionRouter.post(
       const successUrl = `${process.env.FRONTEND_URL}/subscription/success?plan=${planTier}`;
       const cancelUrl = `${process.env.FRONTEND_URL}/subscription/cancel`;
 
-      const session = await subscriptionService.createCheckoutSession(
+      const session = await createCheckoutSession(
         organizationId,
         planTier,
         successUrl,
@@ -116,7 +122,7 @@ subscriptionRouter.post(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const result = await subscriptionService.cancelSubscription(organizationId);
+      const result = await cancelSubscription(organizationId);
 
       if (!result.success) {
         return sendError(res, result.message, 'SUBSCRIPTION_CANCEL_FAILED', 400);
@@ -153,7 +159,7 @@ subscriptionRouter.post(
         return sendError(res, 'Event type is required.', 'MISSING_EVENT', 400);
       }
 
-      const result = await subscriptionService.handleWebhookEvent(event, payload);
+      const result = await handleWebhookEvent(event, payload);
 
       if (!result.success) {
         return sendError(res, result.message, 'WEBHOOK_PROCESSING_FAILED', 500);
