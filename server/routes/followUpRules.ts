@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, requireOrgContext } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
+import { requireOrgContext } from '../middleware/tenant';
 import { followUpRuleService } from '../services/followUpRulesService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
@@ -107,4 +108,3 @@ followUpRuleRouter.delete(
   }
 );
 
-export const followUpRuleRouter;

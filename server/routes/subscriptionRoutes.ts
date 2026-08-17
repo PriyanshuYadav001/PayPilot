@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, requireOrgContext } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
+import { requireOrgContext } from '../middleware/tenant';
 import { subscriptionService, SubscriptionDetails, SubscriptionUsage, CheckoutSession, CancelSubscriptionResponse, handleWebhookEvent } from '../services/subscriptionService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';

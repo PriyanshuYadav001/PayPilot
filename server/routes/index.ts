@@ -13,6 +13,7 @@ import { publicRouter } from './public';
 import { webhookRouter } from './webhooks';
 import { whatsappWebhookRouter } from './whatsappWebhooks';
 import { settingsRoutes } from './settingsRoutes';
+import { subscriptionRoutes } from './subscriptionRoutes';
 
 export const apiRouter = Router();
 

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { requireAuth, requireOrgContext } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
+import { requireOrgContext } from '../middleware/tenant';
 import { invoiceService } from '../services/invoiceService';
 import { validateBody, validateParams } from '../middleware/validate';
 import { customerCreateSchema, customerUpdateSchema, customerIdParamSchema } from '../validators/customer';
