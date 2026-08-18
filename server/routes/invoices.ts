@@ -1,7 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
-import { invoiceService } from '../services/invoiceService';
+import {
+  invoiceService,
+  InvoiceError,
+} from '../services/invoiceService';
 import { validateBody, validateParams } from '../middleware/validate';
 import {
   invoiceCreateSchema,
@@ -13,6 +16,36 @@ import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
 
 export const invoiceRouter = Router();
+
+function handleInvoiceError(
+  res: Response,
+  err: unknown,
+  fallbackMessage: string,
+  fallbackCode: string
+) {
+  if (err instanceof InvoiceError) {
+    return sendError(
+      res,
+      err.message,
+      err.code,
+      err.status
+    );
+  }
+
+  logger.error(fallbackMessage, {
+    error:
+      err instanceof Error
+        ? err.message
+        : String(err),
+  });
+
+  return sendError(
+    res,
+    fallbackMessage,
+    fallbackCode,
+    500
+  );
+}
 
 invoiceRouter.use(requireAuth, requireOrgContext);
 
