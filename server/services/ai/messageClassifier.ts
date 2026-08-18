@@ -127,12 +127,26 @@ export async function classifyMessage(input: ClassifyMessageInput, organizationI
 
   // Sanitize input text for prompt injection
   const injectionDetected = detectPromptInjection(validatedInput.rawText);
-  if (injectionDetected) {
-    logger.warn('Prompt injection pattern detected in customer message', {
-      channel: validatedInput.channel,
-      textLength: validatedInput.rawText.length,
-    });
-  }
+
+if (injectionDetected) {
+  logger.warn('Prompt injection pattern detected in customer message', {
+    channel: validatedInput.channel,
+    textLength: validatedInput.rawText.length,
+  });
+}
+
+if (injectionDetected) {
+  return {
+    output: {
+      intent: 'OTHER',
+      sentiment: 'neutral',
+      confidence: 0.3,
+      summary: '[Flagged] Prompt injection detected in customer message.',
+    },
+    warnings: ['Prompt injection detected'],
+    injectionDetected: true,
+  };
+}
 
   // Check AI analysis usage limit before calling AI provider
   const { allowed } = await canAnalyzeAI(organizationId);
