@@ -39,7 +39,7 @@ const mockCallRow = {
   customer_id: TEST_CUST,
   invoice_id: TEST_INV,
   follow_up_task_id: null,
-  provider: 'custom',
+  provider: 'exotel',
   provider_call_id: 'prov-call-123',
   from_number: '+911234567890',
   to_number: '+919876543210',
