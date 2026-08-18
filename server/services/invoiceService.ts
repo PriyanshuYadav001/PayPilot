@@ -1148,7 +1148,6 @@ export async function getInvoiceSummary(
   const pendingInvoices =
     invoiceArray.filter(
       (invoice) =>
-        invoice.status === 'pending' ||
         invoice.status === 'draft' ||
         invoice.status === 'sent' ||
         invoice.status === 'partially_paid',
