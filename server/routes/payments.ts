@@ -79,3 +79,23 @@ paymentRouter.post('/create', canWrite, validateBody(paymentCreateSchema), async
     handleError(res, err, 'createPayment');
   }
 });
+
+/**
+ * GET /invoices/:id/payments
+ * Lists payments for an invoice, scoped to the current organization.
+ */
+paymentRouter.get('/invoices/:id/payments', canRead, async (req: Request, res: Response) => {
+  const { organizationId } = req.tenant!;
+  const { id } = req.params as { id: string };
+
+  try {
+    const payments = await paymentService.getInvoicePayments(
+      organizationId,
+      id
+    );
+
+    sendSuccess(res, { payments });
+  } catch (err) {
+    handleError(res, err, 'getInvoicePayments');
+  }
+});

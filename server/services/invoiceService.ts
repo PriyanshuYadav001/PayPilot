@@ -1219,7 +1219,7 @@ export async function listInvoices(
     limit:
       safeLimit,
 
-    totalPages,
+    lastPage: totalPages,
   };
 }
 
