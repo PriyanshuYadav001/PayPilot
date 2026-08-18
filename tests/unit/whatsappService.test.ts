@@ -189,11 +189,14 @@ mockSupabaseFrom.mockImplementation((table: string) => {
   describe('sendPaymentLink', () => {
     it('sends a payment link via WhatsApp', async () => {
       const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
-      await whatsappService.sendPaymentLink({
-        organizationId: TEST_ORG,
-        customerId: TEST_CUST,
-        invoiceId: TEST_INV,
-      });
+      await whatsappService.sendPaymentLink(
+        {
+          organizationId: TEST_ORG,
+          customerId: TEST_CUST,
+          invoiceId: TEST_INV,
+        },
+        TEST_ORG,
+      );
 
       expect(mockSendMessage).toHaveBeenCalledOnce();
       const msg = mockSendMessage.mock.calls[0][1].message;

@@ -193,10 +193,13 @@ describe('messageClassifier', () => {
     });
 
     const { messageClassifier } = await import('../../server/services/ai/messageClassifier');
-    const result = await messageClassifier.classifyMessage({
-      rawText: 'I will pay on 1 Jan 2020',
-      channel: 'whatsapp',
-    });
+    const result = await messageClassifier.classifyMessage(
+      {
+        rawText: 'I will pay on 1 Jan 2020',
+        channel: 'whatsapp',
+      },
+      ORG_ID,
+    );
 
     expect(result.output.intent).toBe('OTHER');
     expect(result.warnings.some((w) => w.includes('past'))).toBe(true);
@@ -211,10 +214,13 @@ describe('messageClassifier', () => {
     });
 
     const { messageClassifier } = await import('../../server/services/ai/messageClassifier');
-    const result = await messageClassifier.classifyMessage({
+    const result = await messageClassifier.classifyMessage(
+      {
       rawText: 'Stop sending me reminders!',
       channel: 'whatsapp',
-    });
+      },
+      ORG_ID,
+    );
 
     expect(result.output.intent).toBe('STOP_REMINDERS');
     expect(result.warnings.some((w) => w.includes('human confirmation'))).toBe(true);
@@ -230,11 +236,14 @@ describe('messageClassifier', () => {
     });
 
     const { messageClassifier } = await import('../../server/services/ai/messageClassifier');
-    const result = await messageClassifier.classifyMessage({
+    const result = await messageClassifier.classifyMessage(
+      {
       rawText: 'I paid 100000',
       channel: 'email',
       amountDue: 10000,
-    });
+      },
+      ORG_ID,
+    );
 
     expect(result.warnings.some((w) => w.includes('exceeds'))).toBe(true);
   });
@@ -242,10 +251,13 @@ describe('messageClassifier', () => {
   it('validates input with Zod', async () => {
     const { messageClassifier } = await import('../../server/services/ai/messageClassifier');
     await expect(
-      messageClassifier.classifyMessage({
+      messageClassifier.classifyMessage(
+        {
         rawText: '',
         channel: 'whatsapp',
-      }),
+        },
+        ORG_ID,
+      ),
     ).rejects.toThrow();
   });
 
@@ -258,10 +270,13 @@ describe('messageClassifier', () => {
     });
 
     const { messageClassifier } = await import('../../server/services/ai/messageClassifier');
-    const result = await messageClassifier.classifyMessage({
+    const result = await messageClassifier.classifyMessage(
+      {
       rawText: 'Nice weather today!',
       channel: 'whatsapp',
-    });
+      },
+      ORG_ID,
+    );
 
     // Verify no database operations were attempted
     expect(result.output.intent).toBe('OTHER');
