@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 /**
  * Mock usage service.
  *
- * emailService now uses:
+ * emailService uses:
  *   checkLimit()
  *   recordUsage()
  *
@@ -359,7 +359,17 @@ describe('Email Follow-Up Service', () => {
       expect(call[1].message).toContain('Jane Doe');
       expect(call[1].message).toContain('Test Business');
       expect(call[1].message).toContain('1,180.00');
-      expect(call[1].message).toContain('Pay Now');
+
+      /**
+       * The default test has no active payment link.
+       * Therefore the invoice reminder template does not
+       * render a "Pay Now" CTA.
+       *
+       * Verify the actual reminder content instead.
+       */
+      expect(call[1].message).toContain(
+        'Please make the payment before the due date to avoid any late fees.',
+      );
 
       expect(call[1].metadata.type).toBe(
         'invoice_reminder',
