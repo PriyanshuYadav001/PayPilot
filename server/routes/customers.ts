@@ -102,7 +102,7 @@ customerRouter.get(
   validateParams(customerIdParamSchema),
   async (req: Request, res: Response) => {
     const { organizationId } = req.tenant!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     try {
       const customer = await customerService.getCustomer(
@@ -200,7 +200,7 @@ customerRouter.patch(
   validateBody(customerUpdateSchema),
   async (req: Request, res: Response) => {
     const { organizationId } = req.tenant!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     try {
       const customer = await customerService.updateCustomer(
@@ -255,7 +255,7 @@ customerRouter.delete(
   validateParams(customerIdParamSchema),
   async (req: Request, res: Response) => {
     const { organizationId } = req.tenant!;
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     try {
       const customer = await customerService.deleteCustomer(
