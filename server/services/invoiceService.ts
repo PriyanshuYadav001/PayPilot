@@ -1199,11 +1199,11 @@ export async function listInvoices(
   const total =
     count ?? 0;
 
-  const lastPage =
-    Math.ceil(
-      total /
-        safeLimit,
-    );
+  const totalPages =
+  Math.ceil(
+    total /
+      safeLimit,
+  );
 
   return {
     data:
@@ -1219,7 +1219,7 @@ export async function listInvoices(
     limit:
       safeLimit,
 
-    lastPage,
+    totalPages,
   };
 }
 
