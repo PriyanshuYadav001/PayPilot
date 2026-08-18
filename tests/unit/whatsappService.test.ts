@@ -5,20 +5,42 @@ const mockSendMessage = vi.fn();
 const mockGetInvoice = vi.fn();
 const mockSupabaseFrom = vi.fn();
 
+/**
+ * Mock usageService so these tests focus on WhatsApp behaviour.
+ *
+ * Usage/subscription limits should have their own dedicated tests.
+ * Without this mock, whatsappService reaches the real usageService,
+ * which then checks usage_records and rejects the test organization
+ * because it has no WhatsApp entitlement configured.
+ */
+const mockCheckAndRecordUsage = vi.fn();
+
 vi.mock('../../server/lib/supabaseClient', () => ({
-  supabaseServer: { from: (...args: unknown[]) => mockSupabaseFrom(...args) },
+  supabaseServer: {
+    from: (...args: unknown[]) => mockSupabaseFrom(...args),
+  },
 }));
 
 vi.mock('../../server/services/communication/communicationService', () => ({
-  communicationService: { sendMessage: mockSendMessage },
+  communicationService: {
+    sendMessage: mockSendMessage,
+  },
 }));
 
 vi.mock('../../server/services/invoiceService', () => ({
-  invoiceService: { getInvoice: mockGetInvoice },
+  invoiceService: {
+    getInvoice: mockGetInvoice,
+  },
 }));
 
 vi.mock('../../server/services/payment/paymentService', () => ({
-  createPaymentLink: vi.fn().mockResolvedValue({ shortUrl: 'https://pay.test/inv1' }),
+  createPaymentLink: vi
+    .fn()
+    .mockResolvedValue({ shortUrl: 'https://pay.test/inv1' }),
+}));
+
+vi.mock('../../server/services/usageService', () => ({
+  checkAndRecordUsage: mockCheckAndRecordUsage,
 }));
 
 const TEST_ORG = '11111111-1111-1111-1111-111111111111';
@@ -44,104 +66,154 @@ const mockInvoice = {
   customer: mockCustomer,
 };
 
+/**
+ * Mock organization query.
+ */
 function mockOrgQuery(name: string) {
-  const orgChain = {
+  return {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn().mockResolvedValue({ data: { name }, error: null }),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: { name },
+      error: null,
+    }),
   };
-  return orgChain;
 }
 
+/**
+ * Mock payment_links query.
+ */
 function mockPaymentLinksQuery(hasLink: boolean) {
-  const chain = {
+  return {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     order: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue(
       hasLink
-        ? { data: { short_url: 'https://pay.test/existing', status: 'active', expires_at: null }, error: null }
-        : { data: null, error: null },
+        ? {
+            data: {
+              short_url: 'https://pay.test/existing',
+              status: 'active',
+              expires_at: null,
+            },
+            error: null,
+          }
+        : {
+            data: null,
+            error: null,
+          },
     ),
   };
-  return chain;
 }
 
 describe('WhatsApp Follow-Up Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
     mockGetInvoice.mockResolvedValue(mockInvoice);
 
-    const mockSupabaseFrom = vi.fn();
-mockSupabaseFrom.mockImplementation((table: string) => {
-  if (table === 'organizations') return mockOrgQuery('Acme Corp');
-  if (table === 'payment_links') return mockPaymentLinksQuery(true);
-  if (table === 'usage_records') return {
-    select: vi.fn().mockResolvedValue({ data: { count: 0 }, error: null }),
-    eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-    gte: vi.fn().mockReturnValue({
-      lt: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    }),
-    lt: vi.fn().mockReturnValue({
-      single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }),
-    single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    update: vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-      select: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }),
-  };
-  // Full mock support for all supabase query methods used in the codebase
-  return {
-    select: vi.fn().mockResolvedValue({ data: null, error: null }),
-    eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-    gte: vi.fn().mockReturnValue({
-      lt: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    }),
-    lt: vi.fn().mockReturnValue({
-      single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }),
-    single: vi.fn().mockResolvedValue({ data: null, error: null }),
-    update: vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-      select: vi.fn().mockResolvedValue({ data: null, error: null }),
-    }),
-  };
-});
+    /**
+     * Every WhatsApp test is allowed to send one message.
+     *
+     * This prevents the real usage/subscription database logic from
+     * interfering with these unit tests.
+     */
+    mockCheckAndRecordUsage.mockResolvedValue({
+      allowed: true,
+      recorded: true,
+      count: 1,
+      limit: 1000,
+      remaining: 999,
+    });
+
+    /**
+     * Configure the ACTUAL top-level mockSupabaseFrom.
+     *
+     * Do not redeclare it with `const` inside beforeEach().
+     */
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === 'organizations') {
+        return mockOrgQuery('Acme Corp');
+      }
+
+      if (table === 'payment_links') {
+        return mockPaymentLinksQuery(true);
+      }
+
+      /**
+       * Fallback query object for any other Supabase table used by
+       * whatsappService.
+       */
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        neq: vi.fn().mockReturnThis(),
+        in: vi.fn().mockReturnThis(),
+        gte: vi.fn().mockReturnThis(),
+        lte: vi.fn().mockReturnThis(),
+        lt: vi.fn().mockReturnThis(),
+        gt: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({
+          data: null,
+          error: null,
+        }),
+        single: vi.fn().mockResolvedValue({
+          data: null,
+          error: null,
+        }),
+        insert: vi.fn().mockReturnThis(),
+        update: vi.fn().mockReturnThis(),
+        delete: vi.fn().mockReturnThis(),
+      };
+    });
   });
 
   describe('sendInvoiceReminder', () => {
     it('sends a WhatsApp invoice reminder with correct content', async () => {
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await whatsappService.sendInvoiceReminder({
         organizationId: TEST_ORG,
         customerId: TEST_CUST,
         invoiceId: TEST_INV,
       });
 
+      expect(mockCheckAndRecordUsage).toHaveBeenCalled();
+
       expect(mockSendMessage).toHaveBeenCalledOnce();
+
       const call = mockSendMessage.mock.calls[0];
+
       expect(call[0]).toBe(TEST_ORG);
       expect(call[1].channel).toBe('whatsapp');
       expect(call[1].message).toContain('INV-001');
       expect(call[1].message).toContain('₹10,000');
       expect(call[1].message).toContain('25 August 2026');
-      expect(call[1].message).toContain('Pay now: https://pay.test/existing');
+      expect(call[1].message).toContain(
+        'Pay now: https://pay.test/existing',
+      );
       expect(call[1].metadata.type).toBe('invoice_reminder');
     });
 
     it('throws when customer has no phone number', async () => {
       mockGetInvoice.mockResolvedValue({
         ...mockInvoice,
-        customer: { ...mockCustomer, whatsappNumber: null, phone: null },
+        customer: {
+          ...mockCustomer,
+          whatsappNumber: null,
+          phone: null,
+        },
       });
 
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await expect(
         whatsappService.sendInvoiceReminder({
           organizationId: TEST_ORG,
@@ -149,15 +221,23 @@ mockSupabaseFrom.mockImplementation((table: string) => {
           invoiceId: TEST_INV,
         }),
       ).rejects.toThrow('no WhatsApp or phone number');
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
     it('throws when customer is DND', async () => {
       mockGetInvoice.mockResolvedValue({
         ...mockInvoice,
-        customer: { ...mockCustomer, isDnd: true },
+        customer: {
+          ...mockCustomer,
+          isDnd: true,
+        },
       });
 
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await expect(
         whatsappService.sendInvoiceReminder({
           organizationId: TEST_ORG,
@@ -165,30 +245,44 @@ mockSupabaseFrom.mockImplementation((table: string) => {
           invoiceId: TEST_INV,
         }),
       ).rejects.toThrow('Do Not Disturb');
+
+      expect(mockSendMessage).not.toHaveBeenCalled();
     });
   });
 
   describe('sendOverdueReminder', () => {
     it('sends an overdue WhatsApp message', async () => {
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await whatsappService.sendOverdueReminder({
         organizationId: TEST_ORG,
         customerId: TEST_CUST,
         invoiceId: TEST_INV,
       });
 
+      expect(mockCheckAndRecordUsage).toHaveBeenCalled();
+
       expect(mockSendMessage).toHaveBeenCalledOnce();
+
       const msg = mockSendMessage.mock.calls[0][1].message;
+
       expect(msg).toContain('overdue');
       expect(msg).toContain('INV-001');
       expect(msg).toContain('₹10,000');
-      expect(msg).toContain('Pay now: https://pay.test/existing');
+      expect(msg).toContain(
+        'Pay now: https://pay.test/existing',
+      );
     });
   });
 
   describe('sendPaymentLink', () => {
     it('sends a payment link via WhatsApp', async () => {
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await whatsappService.sendPaymentLink(
         {
           organizationId: TEST_ORG,
@@ -198,39 +292,164 @@ mockSupabaseFrom.mockImplementation((table: string) => {
         TEST_ORG,
       );
 
+      expect(mockCheckAndRecordUsage).toHaveBeenCalled();
+
       expect(mockSendMessage).toHaveBeenCalledOnce();
+
       const msg = mockSendMessage.mock.calls[0][1].message;
+
       expect(msg).toContain('INV-001');
-      expect(msg).toContain('Pay securely: https://pay.test/existing');
+      expect(msg).toContain(
+        'Pay securely: https://pay.test/existing',
+      );
     });
   });
 
   describe('sendPaymentPromiseReminder', () => {
     it('sends a promise reminder with date', async () => {
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      /**
+       * Mock the promise lookup if the service queries payment_promises.
+       *
+       * The service should find a promise with the date below.
+       */
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'organizations') {
+          return mockOrgQuery('Acme Corp');
+        }
+
+        if (table === 'payment_links') {
+          return mockPaymentLinksQuery(true);
+        }
+
+        if (table === 'payment_promises') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                promisedDate: '2026-08-20',
+                promiseDate: '2026-08-20',
+                promised_date: '2026-08-20',
+                status: 'pending',
+              },
+              error: null,
+            }),
+          };
+        }
+
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          gte: vi.fn().mockReturnThis(),
+          lte: vi.fn().mockReturnThis(),
+          lt: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+          single: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+          insert: vi.fn().mockReturnThis(),
+          update: vi.fn().mockReturnThis(),
+          delete: vi.fn().mockReturnThis(),
+        };
+      });
+
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await whatsappService.sendPaymentPromiseReminder({
         organizationId: TEST_ORG,
         customerId: TEST_CUST,
         invoiceId: TEST_INV,
       });
 
+      expect(mockCheckAndRecordUsage).toHaveBeenCalled();
       expect(mockSendMessage).toHaveBeenCalledOnce();
+
       const msg = mockSendMessage.mock.calls[0][1].message;
+
       expect(msg).toContain('promised to pay');
       expect(msg).toContain('20 August 2026');
       expect(msg).toContain('INV-001');
     });
 
     it('sends a promise reminder without date', async () => {
-      const { whatsappService } = await import('../../server/services/whatsapp/whatsappService');
+      /**
+       * No payment promise date is returned.
+       */
+      mockSupabaseFrom.mockImplementation((table: string) => {
+        if (table === 'organizations') {
+          return mockOrgQuery('Acme Corp');
+        }
+
+        if (table === 'payment_links') {
+          return mockPaymentLinksQuery(true);
+        }
+
+        if (table === 'payment_promises') {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            order: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: null,
+              error: null,
+            }),
+          };
+        }
+
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          neq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          gte: vi.fn().mockReturnThis(),
+          lte: vi.fn().mockReturnThis(),
+          lt: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockReturnThis(),
+          order: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+          single: vi.fn().mockResolvedValue({
+            data: null,
+            error: null,
+          }),
+          insert: vi.fn().mockReturnThis(),
+          update: vi.fn().mockReturnThis(),
+          delete: vi.fn().mockReturnThis(),
+        };
+      });
+
+      const { whatsappService } = await import(
+        '../../server/services/whatsapp/whatsappService'
+      );
+
       await whatsappService.sendPaymentPromiseReminder({
         organizationId: TEST_ORG,
         customerId: TEST_CUST,
         invoiceId: TEST_INV,
       });
 
+      expect(mockCheckAndRecordUsage).toHaveBeenCalled();
       expect(mockSendMessage).toHaveBeenCalledOnce();
+
       const msg = mockSendMessage.mock.calls[0][1].message;
+
       expect(msg).toContain('awaiting payment');
     });
   });
@@ -244,30 +463,56 @@ describe('WhatsAppClient', () => {
   describe('verifyWebhookSignature', () => {
     it('returns true for valid HMAC-SHA256 signature', async () => {
       process.env.WHATSAPP_APP_SECRET = 'test-secret-key';
-      const { WhatsAppClient } = await import('../../server/services/whatsapp/WhatsAppClient');
-      const client = new WhatsAppClient({ appSecret: 'test-secret-key' });
+
+      const { WhatsAppClient } = await import(
+        '../../server/services/whatsapp/WhatsAppClient'
+      );
+
+      const client = new WhatsAppClient({
+        appSecret: 'test-secret-key',
+      });
 
       const body = '{"object":"whatsapp_business_account"}';
+
       const signature = crypto
         .createHmac('sha256', 'test-secret-key')
         .update(body)
         .digest('hex');
 
-      expect(client.verifyWebhookSignature(body, signature)).toBe(true);
+      expect(
+        client.verifyWebhookSignature(body, signature),
+      ).toBe(true);
     });
 
     it('returns false for invalid signature', async () => {
-      const { WhatsAppClient } = await import('../../server/services/whatsapp/WhatsAppClient');
-      const client = new WhatsAppClient({ appSecret: 'test-secret-key' });
+      const { WhatsAppClient } = await import(
+        '../../server/services/whatsapp/WhatsAppClient'
+      );
 
-      expect(client.verifyWebhookSignature('body', 'deadbeef'.repeat(8))).toBe(false);
+      const client = new WhatsAppClient({
+        appSecret: 'test-secret-key',
+      });
+
+      expect(
+        client.verifyWebhookSignature(
+          'body',
+          'deadbeef'.repeat(8),
+        ),
+      ).toBe(false);
     });
 
     it('returns false when app secret is not configured', async () => {
-      const { WhatsAppClient } = await import('../../server/services/whatsapp/WhatsAppClient');
-      const client = new WhatsAppClient({ appSecret: '' });
+      const { WhatsAppClient } = await import(
+        '../../server/services/whatsapp/WhatsAppClient'
+      );
 
-      expect(client.verifyWebhookSignature('body', 'sig')).toBe(false);
+      const client = new WhatsAppClient({
+        appSecret: '',
+      });
+
+      expect(
+        client.verifyWebhookSignature('body', 'sig'),
+      ).toBe(false);
     });
   });
 });
