@@ -43,6 +43,14 @@ const m = vi.hoisted(() => {
         record('eq', [col, val]);
         return chain;
       },
+      gte(col: unknown, val: unknown) {
+  record('gte', [col, val]);
+  return chain;
+},
+lt(col: unknown, val: unknown) {
+  record('lt', [col, val]);
+  return chain;
+},
       or(filter: unknown) {
         record('or', [filter]);
         return chain;
@@ -256,6 +264,16 @@ function resetTables() {
     listError: null,
   };
   m.tables.organization_members = { single: MEMBERSHIP };
+    m.tables.usage_records = {
+    rows: [],
+    single: null,
+    insertError: null,
+    insertResult: null,
+    updateError: null,
+    updateResult: null,
+    deleteError: null,
+    listError: null,
+  };
 }
 
 describe('Invoice Routes', () => {
