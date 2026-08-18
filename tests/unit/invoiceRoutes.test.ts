@@ -51,6 +51,12 @@ lt(col: unknown, val: unknown) {
   record('lt', [col, val]);
   return chain;
 },
+
+ilike(col: unknown, pattern: unknown) {
+  record('ilike', [col, pattern]);
+  return chain;
+},
+
       or(filter: unknown) {
         record('or', [filter]);
         return chain;
@@ -263,6 +269,16 @@ function resetTables() {
     deleteError: null,
     listError: null,
   };
+  m.tables.usage_records = {
+  rows: [],
+  single: null,
+  insertError: null,
+  insertResult: null,
+  updateError: null,
+  updateResult: null,
+  deleteError: null,
+  listError: null,
+};
   m.tables.organization_members = { single: MEMBERSHIP };
     m.tables.usage_records = {
     rows: [],
