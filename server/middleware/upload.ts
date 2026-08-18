@@ -13,7 +13,14 @@ const ALLOWED_TYPES: Record<string, string> = {
   jpeg: 'image/jpeg',
 };
 
-const ALLOWED_MIMES = new Set(Object.values(ALLOWED_TYPES));
+function getExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  if (dot === -1 || dot === filename.length - 1) {
+    return '';
+  }
+
+  return filename.slice(dot + 1).toLowerCase();
+}
 
 export class FileUploadError extends Error {
   code: string;
@@ -25,58 +32,83 @@ export class FileUploadError extends Error {
   }
 }
 
-function getExtension(filename: string): string {
-  const dot = filename.lastIndexOf('.');
-  if (dot === -1 || dot === filename.length - 1) {
-    return '';
-  }
-  return filename.slice(dot + 1).toLowerCase();
-}
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_FILE_SIZE, files: 1 },
+
+  limits: {
+    fileSize: MAX_FILE_SIZE,
+    files: 1,
+  },
+
   fileFilter: (_req, file, cb) => {
     const ext = getExtension(file.originalname);
     const expectedMime = ALLOWED_TYPES[ext];
+
     if (!expectedMime) {
-      cb(new FileUploadError('Unsupported file extension. Allowed: pdf, png, jpg, jpeg.'));
+      cb(
+        new FileUploadError(
+          'Unsupported file extension. Allowed: pdf, png, jpg, jpeg.'
+        )
+      );
       return;
     }
-    if (!ALLOWED_MIMES.has(file.mimetype)) {
-      cb(new FileUploadError('Unsupported file type. Allowed: PDF, PNG, JPG, JPEG.'));
+
+    if (file.mimetype !== expectedMime) {
+      cb(
+        new FileUploadError(
+          'Unsupported file type. Allowed: PDF, PNG, JPG, JPEG.'
+        )
+      );
       return;
     }
+
     cb(null, true);
   },
 });
 
-/**
- * Multer middleware that parses a single `file` field from a multipart
- * request. Rejects unsupported extensions/MIME types (400) and files that
- * exceed the size limit (413) with structured JSON errors.
- */
-export function uploadInvoiceDocument(req: Request, res: Response, next: NextFunction): void {
-  const middleware = upload.single('file');
-
-  middleware(req, res, (err: unknown) => {
+export function uploadInvoiceDocument(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void {
+  upload.single('file')(req, res, (err: unknown) => {
     if (!err) {
       next();
       return;
     }
+
     if (err instanceof FileUploadError) {
       sendError(res, err.message, err.code, 400);
       return;
     }
+
     if (err instanceof MulterError) {
       if (err.code === 'LIMIT_FILE_SIZE') {
-        sendError(res, `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`, 'FILE_TOO_LARGE', 413);
+        sendError(
+          res,
+          `File too large. Maximum size is ${MAX_FILE_SIZE_MB}MB.`,
+          'FILE_TOO_LARGE',
+          413
+        );
         return;
       }
-      sendError(res, `Upload failed: ${err.message}`, 'INVALID_UPLOAD', 400);
+
+      sendError(
+        res,
+        `Upload failed: ${err.message}`,
+        'INVALID_UPLOAD',
+        400
+      );
       return;
     }
+
     logger.error('uploadInvoiceDocument: unexpected error', err);
-    sendError(res, 'Upload failed.', 'INTERNAL_SERVER_ERROR', 500);
+
+    sendError(
+      res,
+      'Upload failed.',
+      'INTERNAL_SERVER_ERROR',
+      500
+    );
   });
 }

@@ -1,21 +1,44 @@
 import { Router, Request, Response } from 'express';
+
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
+
 import {
   invoiceService,
   InvoiceError,
 } from '../services/invoiceService';
-import { validateBody, validateParams } from '../middleware/validate';
+
+import {
+  invoiceFileService,
+  InvoiceFileError,
+} from '../services/invoiceFileService';
+
+import { uploadInvoiceDocument } from '../middleware/upload';
+
+import {
+  validateBody,
+  validateParams,
+} from '../middleware/validate';
+
 import {
   invoiceCreateSchema,
   invoiceIdParamSchema,
   invoiceUpdateSchema,
 } from '../validators/invoice';
-import { sendSuccess, sendError } from '../utils/response';
+
+import {
+  sendSuccess,
+  sendError,
+} from '../utils/response';
+
 import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
 
 export const invoiceRouter = Router();
+
+/* =========================================================
+   INVOICE ERROR HANDLER
+   ========================================================= */
 
 function handleInvoiceError(
   res: Response,
@@ -47,21 +70,76 @@ function handleInvoiceError(
   );
 }
 
-invoiceRouter.use(requireAuth, requireOrgContext);
+/* =========================================================
+   INVOICE FILE ERROR HANDLER
+   ========================================================= */
+
+function handleInvoiceFileError(
+  res: Response,
+  err: unknown,
+  fallbackMessage: string,
+  fallbackCode: string
+) {
+  if (err instanceof InvoiceFileError) {
+    return sendError(
+      res,
+      err.message,
+      err.code,
+      err.statusCode
+    );
+  }
+
+  logger.error(fallbackMessage, {
+    error:
+      err instanceof Error
+        ? err.message
+        : String(err),
+  });
+
+  return sendError(
+    res,
+    fallbackMessage,
+    fallbackCode,
+    500
+  );
+}
+
+/* =========================================================
+   AUTH + TENANT CONTEXT
+   ========================================================= */
+
+invoiceRouter.use(
+  requireAuth,
+  requireOrgContext
+);
+
+/* =========================================================
+   GET INVOICES
+   ========================================================= */
 
 /**
- * GET /api/invoices
- * List invoices - OWNER, ADMIN, MEMBER can read
+ * GET /api/v1/invoices
+ *
+ * List invoices.
+ *
+ * OWNER, ADMIN, MEMBER can read.
  */
 invoiceRouter.get(
   '/',
   requirePermission('invoices.read'),
-  async (req: Request, res: Response) => {
+  async (
+    req: Request,
+    res: Response
+  ) => {
     try {
-      const { organizationId } = req.tenant!;
+      const { organizationId } =
+        req.tenant!;
 
-      const page = Number(req.query.page) || 1;
-      const limit = Number(req.query.limit) || 20;
+      const page =
+        Number(req.query.page) || 1;
+
+      const limit =
+        Number(req.query.limit) || 20;
 
       const searchTerm =
         typeof req.query.search === 'string'
@@ -78,16 +156,17 @@ invoiceRouter.get(
           ? (req.query.status as any)
           : undefined;
 
-      const result = await invoiceService.listInvoices(
-        organizationId,
-        customerId,
-        status,
-        searchTerm,
-        page,
-        limit
-      );
+      const result =
+        await invoiceService.listInvoices(
+          organizationId,
+          customerId,
+          status,
+          searchTerm,
+          page,
+          limit
+        );
 
-      sendSuccess(
+      return sendSuccess(
         res,
         {
           invoices: result.data,
@@ -101,12 +180,20 @@ invoiceRouter.get(
         }
       );
     } catch (err) {
-      logger.error('Failed to list invoices', {
-        error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
-      });
+      logger.error(
+        'Failed to list invoices',
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : String(err),
 
-      sendError(
+          organizationId:
+            req.tenant!.organizationId,
+        }
+      );
+
+      return sendError(
         res,
         'Failed to list invoices.',
         'LIST_INVOICES_FAILED',
@@ -116,22 +203,34 @@ invoiceRouter.get(
   }
 );
 
+/* =========================================================
+   GET SINGLE INVOICE
+   ========================================================= */
+
 /**
- * GET /api/invoices/:id
- * Get a specific invoice - OWNER, ADMIN, MEMBER can read
+ * GET /api/v1/invoices/:id
+ *
+ * Get a specific invoice.
+ *
+ * OWNER, ADMIN, MEMBER can read.
  */
 invoiceRouter.get(
   '/:id',
   requirePermission('invoices.read'),
   validateParams(invoiceIdParamSchema),
-  async (req: Request, res: Response) => {
+  async (
+    req: Request,
+    res: Response
+  ) => {
     try {
-      const { organizationId } = req.tenant!;
+      const { organizationId } =
+        req.tenant!;
 
-      const invoice = await invoiceService.getInvoice(
-        organizationId,
-        req.params.id as string
-      );
+      const invoice =
+        await invoiceService.getInvoice(
+          organizationId,
+          req.params.id as string
+        );
 
       if (!invoice) {
         return sendError(
@@ -142,14 +241,25 @@ invoiceRouter.get(
         );
       }
 
-      sendSuccess(res, { invoice });
+      return sendSuccess(
+        res,
+        { invoice }
+      );
     } catch (err) {
-      logger.error('Failed to get invoice', {
-        error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
-      });
+      logger.error(
+        'Failed to get invoice',
+        {
+          error:
+            err instanceof Error
+              ? err.message
+              : String(err),
 
-      sendError(
+          organizationId:
+            req.tenant!.organizationId,
+        }
+      );
+
+      return sendError(
         res,
         'Failed to get invoice.',
         'GET_INVOICE_FAILED',
@@ -159,54 +269,84 @@ invoiceRouter.get(
   }
 );
 
+/* =========================================================
+   CREATE INVOICE
+   ========================================================= */
+
 /**
- * POST /api/invoices
- * Create an invoice - OWNER, ADMIN can write
+ * POST /api/v1/invoices
+ *
+ * Create an invoice.
+ *
+ * OWNER, ADMIN can write.
  */
 invoiceRouter.post(
   '/',
   requirePermission('invoices.write'),
   validateBody(invoiceCreateSchema),
-  async (req: Request, res: Response) => {
+  async (
+    req: Request,
+    res: Response
+  ) => {
     try {
-      const { organizationId, userId } = req.tenant!;
-
-      const invoice = await invoiceService.createInvoice(
+      const {
         organizationId,
         userId,
-        req.body as any
-      );
+      } = req.tenant!;
 
-      sendSuccess(res, { invoice }, 201);
+      const invoice =
+        await invoiceService.createInvoice(
+          organizationId,
+          userId,
+          req.body as any
+        );
+
+      return sendSuccess(
+        res,
+        { invoice },
+        201
+      );
     } catch (err) {
       return handleInvoiceError(
-    res,
-    err,
-    'Failed to create invoice.',
-    'CREATE_INVOICE_FAILED'
-  );
+        res,
+        err,
+        'Failed to create invoice.',
+        'CREATE_INVOICE_FAILED'
+      );
     }
   }
 );
 
+/* =========================================================
+   UPDATE INVOICE
+   ========================================================= */
+
 /**
- * PATCH /api/invoices/:id
- * Update an invoice - OWNER, ADMIN can write
+ * PATCH /api/v1/invoices/:id
+ *
+ * Update an invoice.
+ *
+ * OWNER, ADMIN can write.
  */
 invoiceRouter.patch(
   '/:id',
   requirePermission('invoices.write'),
   validateParams(invoiceIdParamSchema),
   validateBody(invoiceUpdateSchema),
-  async (req: Request, res: Response) => {
+  async (
+    req: Request,
+    res: Response
+  ) => {
     try {
-      const { organizationId } = req.tenant!;
+      const { organizationId } =
+        req.tenant!;
 
-      const invoice = await invoiceService.updateInvoice(
-        organizationId,
-        req.params.id as string,
-        req.body as any
-      );
+      const invoice =
+        await invoiceService.updateInvoice(
+          organizationId,
+          req.params.id as string,
+          req.body as any
+        );
 
       if (!invoice) {
         return sendError(
@@ -217,34 +357,159 @@ invoiceRouter.patch(
         );
       }
 
-      sendSuccess(res, { invoice });
+      return sendSuccess(
+        res,
+        { invoice }
+      );
     } catch (err) {
-  return handleInvoiceError(
-    res,
-    err,
-    'Failed to update invoice.',
-    'UPDATE_INVOICE_FAILED'
-  );
-}
+      return handleInvoiceError(
+        res,
+        err,
+        'Failed to update invoice.',
+        'UPDATE_INVOICE_FAILED'
+      );
+    }
   }
 );
 
+/* =========================================================
+   UPLOAD INVOICE FILE
+   ========================================================= */
+
 /**
- * DELETE /api/invoices/:id
- * Delete an invoice - OWNER only
+ * POST /api/v1/invoices/:id/upload
+ *
+ * Upload or replace an invoice document.
+ *
+ * OWNER, ADMIN can write.
+ *
+ * IMPORTANT:
+ * requirePermission runs BEFORE multer so viewers
+ * receive 403 without processing the uploaded file.
+ */
+invoiceRouter.post(
+  '/:id/upload',
+  requirePermission('invoices.write'),
+  validateParams(invoiceIdParamSchema),
+  uploadInvoiceDocument,
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const { organizationId } =
+        req.tenant!;
+
+      if (!req.file) {
+        return sendError(
+          res,
+          'No file uploaded.',
+          'VALIDATION_ERROR',
+          400
+        );
+      }
+
+      const file =
+        await invoiceFileService.uploadInvoiceFile(
+          organizationId,
+          req.params.id as string,
+          {
+            buffer: req.file.buffer,
+            originalName: req.file.originalname,
+            contentType: req.file.mimetype,
+            size: req.file.size,
+          }
+        );
+
+      return sendSuccess(
+        res,
+        { file },
+        201
+      );
+    } catch (err) {
+      return handleInvoiceFileError(
+        res,
+        err,
+        'Failed to upload invoice file.',
+        'FILE_UPLOAD_FAILED'
+      );
+    }
+  }
+);
+
+/* =========================================================
+   GET INVOICE FILE
+   ========================================================= */
+
+/**
+ * GET /api/v1/invoices/:id/file
+ *
+ * Generate a signed URL for the stored invoice document.
+ *
+ * OWNER, ADMIN, MEMBER can read.
+ */
+invoiceRouter.get(
+  '/:id/file',
+  requirePermission('invoices.read'),
+  validateParams(invoiceIdParamSchema),
+  async (
+    req: Request,
+    res: Response
+  ) => {
+    try {
+      const { organizationId } =
+        req.tenant!;
+
+      const file =
+        await invoiceFileService.getInvoiceFileSignedUrl(
+          organizationId,
+          req.params.id as string
+        );
+
+      return sendSuccess(
+        res,
+        { file }
+      );
+    } catch (err) {
+      return handleInvoiceFileError(
+        res,
+        err,
+        'Failed to get invoice file.',
+        'GET_INVOICE_FILE_FAILED'
+      );
+    }
+  }
+);
+
+/* =========================================================
+   DELETE INVOICE
+   ========================================================= */
+
+/**
+ * DELETE /api/v1/invoices/:id
+ *
+ * Delete an invoice.
+ *
+ * OWNER, ADMIN can write according to the
+ * invoices.write permission.
  */
 invoiceRouter.delete(
   '/:id',
   requirePermission('invoices.write'),
   validateParams(invoiceIdParamSchema),
-  async (req: Request, res: Response) => {
+  async (
+    req: Request,
+    res: Response
+  ) => {
     try {
-      const { organizationId } = req.tenant!;
+      const { organizationId } =
+        req.tenant!;
 
-      const invoice = await invoiceService.deleteInvoice(
-        organizationId,
-        req.params.id as string
-      );
+      const invoice =
+        await invoiceService.deleteInvoice(
+          organizationId,
+          req.params.id as string
+        );
 
       if (!invoice) {
         return sendError(
@@ -255,8 +520,11 @@ invoiceRouter.delete(
         );
       }
 
-      sendSuccess(res, { invoice });
-        } catch (err) {
+      return sendSuccess(
+        res,
+        { invoice }
+      );
+    } catch (err) {
       return handleInvoiceError(
         res,
         err,
