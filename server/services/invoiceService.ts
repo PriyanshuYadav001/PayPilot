@@ -109,7 +109,7 @@ export interface InvoicePage {
   total: number;
   page: number;
   limit: number;
-  totalPages: number;
+  lastPage: number;
 }
 
 export interface InvoiceSummary {
@@ -138,12 +138,6 @@ function roundMoney(value: number): number {
  * IMPORTANT:
  * `total` represents the line subtotal before tax.
  * Tax is stored separately in `tax_amount`.
- *
- * This matches the invoice item model used by the tests:
- *
- * subtotal = quantity * unit_price
- * tax_amount = subtotal * tax_rate / 100
- * total = subtotal
  */
 function calculateItemFinancials(
   item: InvoiceItemInput,
@@ -169,12 +163,6 @@ function calculateItemFinancials(
 
   /*
    * Round each line independently.
-   *
-   * Example:
-   * 100.005 + 200.985
-   *
-   * Each line is rounded first and then
-   * added to the invoice subtotal.
    */
   const subtotal = roundMoney(
     quantity * unitPrice,
@@ -187,9 +175,6 @@ function calculateItemFinancials(
 
   /*
    * `total` is the line subtotal before tax.
-   * The invoice-level total is calculated as:
-   *
-   * subtotal + taxTotal - discount
    */
   const total = subtotal;
 
@@ -495,8 +480,18 @@ async function customerBelongsToOrg(
 /**
  * Calculate invoice financial values.
  *
- * Each invoice line is rounded first.
- * Then line subtotals and line taxes are summed.
+ * IMPORTANT:
+ * Every invoice line is rounded independently BEFORE
+ * being added to the invoice totals.
+ *
+ * Example:
+ *
+ * round(line 1)
+ * + round(line 2)
+ * + round(line 3)
+ * = invoice subtotal
+ *
+ * The same rule is applied to line-level tax.
  */
 function computeFinancials(
   items: InvoiceItemInput[],
@@ -586,31 +581,39 @@ function computeFinancials(
       );
     }
 
-    const line =
-      calculateItemFinancials(
-        item,
-      );
-
     /*
      * IMPORTANT:
-     * Round each line before adding.
+     *
+     * Round every invoice line independently BEFORE
+     * adding it to the invoice totals.
      */
-    subtotal = roundMoney(
-      subtotal +
-        line.subtotal,
-    );
+    const lineSubtotal =
+      roundMoney(
+        item.quantity *
+          item.unitPrice,
+      );
 
-    taxTotal = roundMoney(
-      taxTotal +
-        line.taxAmount,
-    );
+    const lineTax =
+      roundMoney(
+        lineSubtotal *
+          (
+            (item.taxRate ?? 0) /
+            100
+          ),
+      );
+
+    subtotal =
+      roundMoney(
+        subtotal +
+          lineSubtotal,
+      );
+
+    taxTotal =
+      roundMoney(
+        taxTotal +
+          lineTax,
+      );
   }
-
-  subtotal =
-    roundMoney(subtotal);
-
-  taxTotal =
-    roundMoney(taxTotal);
 
   const discount =
     roundMoney(
@@ -1196,7 +1199,7 @@ export async function listInvoices(
   const total =
     count ?? 0;
 
-  const totalPages =
+  const lastPage =
     Math.ceil(
       total /
         safeLimit,
@@ -1216,12 +1219,7 @@ export async function listInvoices(
     limit:
       safeLimit,
 
-    /*
-     * IMPORTANT:
-     * The routes/tests expect
-     * `totalPages`.
-     */
-    totalPages,
+    lastPage,
   };
 }
 
@@ -1801,7 +1799,7 @@ export async function deleteInvoice(
   if (!existing) {
     /*
      * IMPORTANT:
-     * Routes/tests expect NOT_FOUND.
+     * Routes expect NOT_FOUND.
      */
     throw new InvoiceError(
       'Invoice not found.',
