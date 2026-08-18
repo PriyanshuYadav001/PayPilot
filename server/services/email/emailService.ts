@@ -2,7 +2,11 @@ import { supabaseServer } from '../../lib/supabaseClient';
 import { logger } from '../../utils/logger';
 import { communicationService } from '../communication/communicationService';
 import { invoiceService } from '../invoiceService';
-import { checkAndRecordUsage, Metric } from '../../services/usageService';
+import {
+  checkLimit,
+  recordUsage,
+  Metric,
+} from '../usageService';
 import type { Invoice, Customer } from '../../../shared/types';
 import {
   buildInvoiceReminderEmail,
@@ -10,7 +14,6 @@ import {
   buildPaymentLinkEmail,
   buildPaymentConfirmationEmail,
   buildPaymentPromiseReminderEmail,
-  type EmailTemplateData,
 } from './emailTemplates';
 
 const MAX_EMAIL_RETRIES = 3;
@@ -34,23 +37,46 @@ interface LoadedContext extends FollowUpEmailContext {
   businessName: string;
 }
 
-async function loadEmailContext(input: FollowUpEmailContext): Promise<LoadedContext> {
-  const invoice = await invoiceService.getInvoice(input.organizationId, input.invoiceId);
+/**
+ * Loads and validates all data required to send an email.
+ *
+ * Validation is intentionally done before checking email usage.
+ * This means errors such as "invoice not found", "no email address",
+ * or "DND enabled" are returned correctly instead of being hidden
+ * behind a subscription error.
+ */
+async function loadEmailContext(
+  input: FollowUpEmailContext,
+): Promise<LoadedContext> {
+  const invoice = await invoiceService.getInvoice(
+    input.organizationId,
+    input.invoiceId,
+  );
+
   if (!invoice) {
-    throw new Error(`Invoice ${input.invoiceId} not found in organization ${input.organizationId}`);
+    throw new Error(
+      `Invoice ${input.invoiceId} not found in organization ${input.organizationId}`,
+    );
   }
 
   const customer = invoice.customer;
+
   if (!customer) {
-    throw new Error(`Customer not found for invoice ${input.invoiceId}`);
+    throw new Error(
+      `Customer not found for invoice ${input.invoiceId}`,
+    );
   }
 
   if (!customer.email) {
-    throw new Error(`Customer ${customer.id} has no email address`);
+    throw new Error(
+      `Customer ${customer.id} has no email address`,
+    );
   }
 
   if (customer.isDnd) {
-    throw new Error(`Customer ${customer.id} has opted out of communications (Do Not Disturb)`);
+    throw new Error(
+      `Customer ${customer.id} has opted out of communications (Do Not Disturb)`,
+    );
   }
 
   const { data: orgData } = await supabaseServer
@@ -59,7 +85,9 @@ async function loadEmailContext(input: FollowUpEmailContext): Promise<LoadedCont
     .eq('id', input.organizationId)
     .maybeSingle();
 
-  const businessName = (orgData as Record<string, unknown> | null)?.name as string ?? 'PayPilot Business';
+  const businessName =
+    (orgData as Record<string, unknown> | null)?.name as string ??
+    'PayPilot Business';
 
   return {
     ...input,
@@ -69,7 +97,13 @@ async function loadEmailContext(input: FollowUpEmailContext): Promise<LoadedCont
   };
 }
 
-async function resolvePaymentLinkUrl(organizationId: string, invoiceId: string): Promise<string | undefined> {
+/**
+ * Finds an active payment link for an invoice.
+ */
+async function resolvePaymentLinkUrl(
+  organizationId: string,
+  invoiceId: string,
+): Promise<string | undefined> {
   try {
     const { data: existing } = await supabaseServer
       .from('payment_links')
@@ -85,48 +119,79 @@ async function resolvePaymentLinkUrl(organizationId: string, invoiceId: string):
       return undefined;
     }
 
-    return (existing as Record<string, unknown>).short_url as string;
+    return (existing as Record<string, unknown>).short_url as
+      | string
+      | undefined;
   } catch (err) {
     logger.error('Failed to resolve payment link URL', {
       error: err instanceof Error ? err.message : String(err),
       organizationId,
       invoiceId,
     });
+
     return undefined;
   }
 }
 
-async function canSendEmails(
-  organizationId: string,
-): Promise<{ allowed: boolean; remaining: number; limit: number }> {
-  return await checkAndRecordUsage(
-    organizationId,
-    Metric.emails_sent,
-    1,
-  );
-}
-
-// Check if the organization has remaining email quota before sending
+/**
+ * Checks whether the organization is allowed to send an email.
+ *
+ * IMPORTANT:
+ * This function only checks the quota before the actual send.
+ * The usage record is handled after a successful send.
+ */
 async function checkEmailUsage(
   organizationId: string,
-): Promise<{ allowed: boolean; remaining: number; limit: number }> {
-  return await checkAndRecordUsage(
+): Promise<{
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+}> {
+  const result = await checkLimit(
     organizationId,
     Metric.emails_sent,
     1,
   );
+
+  return {
+    allowed: !result.exceeded,
+    remaining: result.remaining,
+    limit: result.limit,
+  };
 }
 
-export async function sendInvoiceReminder(input: FollowUpEmailContext): Promise<void> {
-  const { organizationId } = input;
+async function recordEmailUsage(
+  organizationId: string,
+): Promise<void> {
+  const result = await recordUsage(
+    organizationId,
+    Metric.emails_sent,
+    1,
+  );
 
-  // Check email usage limit before sending
-  const { allowed } = await checkEmailUsage(organizationId);
+  if (!result) {
+    throw new Error(
+      'Failed to record email usage.',
+    );
+  }
+}
+
+/**
+ * Sends an invoice reminder email.
+ */
+export async function sendInvoiceReminder(
+  input: FollowUpEmailContext,
+): Promise<void> {
+  const ctx = await loadEmailContext(input);
+
+  const { allowed } = await checkEmailUsage(input.organizationId);
+
   if (!allowed) {
-    throw new Error('Plan limit reached: Your subscription does not include sending emails.');
+    throw new Error(
+      'Plan limit reached: Your subscription does not include sending emails.',
+    );
   }
 
-  const ctx = await loadEmailContext(input);
   const email = buildInvoiceReminderEmail({
     customerName: ctx.customer.contactName,
     invoiceNumber: ctx.invoice.invoiceNumber,
@@ -137,26 +202,38 @@ export async function sendInvoiceReminder(input: FollowUpEmailContext): Promise<
   });
 
   await sendWithRetry(
-    organizationId,
+    input.organizationId,
     ctx.customer.id,
     ctx.invoice.id,
     email.subject,
     email.html,
     email.text,
-    {},
+    {
+      type: 'invoice_reminder',
+    },
   );
 }
 
-export async function sendOverdueReminder(input: FollowUpEmailContext): Promise<void> {
-  const { organizationId } = input;
+/**
+ * Sends an overdue invoice reminder email.
+ */
+export async function sendOverdueReminder(
+  input: FollowUpEmailContext,
+): Promise<void> {
+  const ctx = await loadEmailContext(input);
 
-  // Check email usage limit before sending
-  const { allowed } = await checkEmailUsage(organizationId);
+  const { allowed } = await checkEmailUsage(input.organizationId);
+
   if (!allowed) {
-    throw new Error('Plan limit reached: Your subscription does not include sending emails.');
+    throw new Error(
+      'Plan limit reached: Your subscription does not include sending emails.',
+    );
   }
 
-  const ctx = await loadEmailContext(input);
+  const daysRelativeToDue = calculateDaysRelativeToDue(
+    ctx.invoice.dueDate,
+  );
+
   const email = buildOverdueReminderEmail({
     customerName: ctx.customer.contactName,
     invoiceNumber: ctx.invoice.invoiceNumber,
@@ -167,55 +244,28 @@ export async function sendOverdueReminder(input: FollowUpEmailContext): Promise<
   });
 
   await sendWithRetry(
-    organizationId,
+    input.organizationId,
     ctx.customer.id,
     ctx.invoice.id,
     email.subject,
     email.html,
     email.text,
-    {},
+    {
+      type: 'overdue_reminder',
+      daysRelativeToDue,
+    },
   );
 }
 
-export async function sendPaymentLink(input: FollowUpEmailContext): Promise<void> {
-  const { organizationId } = input;
-
-  // Check email usage limit before sending
-  const { allowed } = await checkEmailUsage(organizationId);
-  if (!allowed) {
-    throw new Error('Plan limit reached: Your subscription does not include sending emails.');
-  }
-
-  const ctx = await loadEmailContext(input);
-  const paymentUrl = await resolvePaymentLinkUrl(organizationId, ctx.invoice.id);
-
-  const email = buildPaymentLinkEmail({
-  customerName: ctx.customer.contactName,
-  businessName: ctx.businessName,
-  invoiceNumber: ctx.invoice.invoiceNumber,
-  amountDue: ctx.invoice.amountDue,
-  currency: ctx.invoice.currency,
-  dueDate: ctx.invoice.dueDate,
-  paymentLinkUrl: paymentUrl,
-});
-
-  await sendWithRetry(
-    organizationId,
-    ctx.customer.id,
-    ctx.invoice.id,
-    email.subject,
-    email.html,
-    email.text,
-    { paymentUrl },
-  );
-}
-
-export async function sendPaymentConfirmation(
+/**
+ * Sends a payment-link email.
+ */
+export async function sendPaymentLink(
   input: FollowUpEmailContext,
 ): Promise<void> {
-  const { organizationId } = input;
+  const ctx = await loadEmailContext(input);
 
-  const { allowed } = await checkEmailUsage(organizationId);
+  const { allowed } = await checkEmailUsage(input.organizationId);
 
   if (!allowed) {
     throw new Error(
@@ -223,7 +273,50 @@ export async function sendPaymentConfirmation(
     );
   }
 
+  const paymentUrl = await resolvePaymentLinkUrl(
+    input.organizationId,
+    ctx.invoice.id,
+  );
+
+  const email = buildPaymentLinkEmail({
+    customerName: ctx.customer.contactName,
+    businessName: ctx.businessName,
+    invoiceNumber: ctx.invoice.invoiceNumber,
+    amountDue: ctx.invoice.amountDue,
+    currency: ctx.invoice.currency,
+    dueDate: ctx.invoice.dueDate,
+    paymentLinkUrl: paymentUrl,
+  });
+
+  await sendWithRetry(
+    input.organizationId,
+    ctx.customer.id,
+    ctx.invoice.id,
+    email.subject,
+    email.html,
+    email.text,
+    {
+      type: 'payment_link',
+      paymentUrl,
+    },
+  );
+}
+
+/**
+ * Sends a payment confirmation email.
+ */
+export async function sendPaymentConfirmation(
+  input: FollowUpEmailContext,
+): Promise<void> {
   const ctx = await loadEmailContext(input);
+
+  const { allowed } = await checkEmailUsage(input.organizationId);
+
+  if (!allowed) {
+    throw new Error(
+      'Plan limit reached: Your subscription does not include sending emails.',
+    );
+  }
 
   const email = buildPaymentConfirmationEmail({
     customerName: ctx.customer.contactName,
@@ -235,28 +328,33 @@ export async function sendPaymentConfirmation(
   });
 
   await sendWithRetry(
-    organizationId,
+    input.organizationId,
     ctx.customer.id,
     ctx.invoice.id,
     email.subject,
     email.html,
     email.text,
-    {},
+    {
+      type: 'payment_confirmation',
+    },
   );
 }
 
-export async function sendPaymentPromiseReminder(input: FollowUpEmailContext): Promise<void> {
-  const { organizationId } = input;
+/**
+ * Sends a payment promise reminder email.
+ */
+export async function sendPaymentPromiseReminder(
+  input: FollowUpEmailContext,
+): Promise<void> {
+  const ctx = await loadEmailContext(input);
 
-  const { allowed } = await checkEmailUsage(organizationId);
+  const { allowed } = await checkEmailUsage(input.organizationId);
 
   if (!allowed) {
     throw new Error(
       'Plan limit reached: Your subscription does not include sending emails.',
     );
   }
-
-  const ctx = await loadEmailContext(input);
 
   const email = buildPaymentPromiseReminderEmail({
     customerName: ctx.customer.contactName,
@@ -268,16 +366,25 @@ export async function sendPaymentPromiseReminder(input: FollowUpEmailContext): P
   });
 
   await sendWithRetry(
-    organizationId,
+    input.organizationId,
     ctx.customer.id,
     ctx.invoice.id,
     email.subject,
     email.html,
     email.text,
-    {},
+    {
+      type: 'payment_promise_reminder',
+      promiseDate: input.promiseDate,
+    },
   );
 }
 
+/**
+ * Sends an email with retry support.
+ *
+ * Usage is recorded exactly once after the email is successfully sent.
+ * Failed attempts do not consume email quota.
+ */
 async function sendWithRetry(
   organizationId: string,
   customerId: string,
@@ -289,7 +396,11 @@ async function sendWithRetry(
 ): Promise<void> {
   let lastError: unknown = null;
 
-  for (let attempt = 1; attempt <= MAX_EMAIL_RETRIES; attempt++) {
+  for (
+    let attempt = 1;
+    attempt <= MAX_EMAIL_RETRIES;
+    attempt++
+  ) {
     try {
       await communicationService.sendMessage(organizationId, {
         customerId,
@@ -304,17 +415,47 @@ async function sendWithRetry(
         },
       });
 
+      /*
+       * Only record usage after a successful send.
+       *
+       * This is deliberately outside the retry loop so that:
+       * - 1 successful email = 1 usage
+       * - 3 failed attempts = 0 usage
+       */
+      try {
+        await recordEmailUsage(organizationId);
+      } catch (usageError) {
+        /*
+         * The email was already successfully sent.
+         * We don't want to tell the caller that the email failed
+         * merely because usage accounting had an issue.
+         */
+        logger.error('Failed to record email usage after successful send', {
+          organizationId,
+          customerId,
+          invoiceId,
+          error:
+            usageError instanceof Error
+              ? usageError.message
+              : String(usageError),
+        });
+      }
+
       logger.info('Email sent successfully', {
         organizationId,
         customerId,
+        invoiceId,
         attempt,
       });
+
       return;
     } catch (err) {
       lastError = err;
+
       logger.warn('Email send attempt failed', {
         organizationId,
         customerId,
+        invoiceId,
         attempt,
         error: err instanceof Error ? err.message : String(err),
       });
@@ -328,7 +469,37 @@ async function sendWithRetry(
   logger.error('Email send failed after all retries', {
     organizationId,
     customerId,
-    error: lastError instanceof Error ? lastError.message : String(lastError),
+    invoiceId,
+    error:
+      lastError instanceof Error
+        ? lastError.message
+        : String(lastError),
   });
+
   throw lastError;
+}
+
+/**
+ * Calculates how many days the current date is relative to
+ * the invoice due date.
+ *
+ * Positive value = overdue.
+ * Negative value = before due date.
+ * Zero = due today.
+ */
+function calculateDaysRelativeToDue(
+  dueDate: string,
+): number {
+  const today = new Date();
+  const due = new Date(dueDate);
+
+  today.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+
+  const difference =
+    today.getTime() - due.getTime();
+
+  return Math.floor(
+    difference / (1000 * 60 * 60 * 24),
+  );
 }

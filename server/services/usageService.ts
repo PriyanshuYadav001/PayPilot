@@ -51,9 +51,9 @@ async function getPlanTier(
 }
 
 /**
- * Get the monthly usage period.
+ * Get the current monthly usage period.
  *
- * We use UTC here so the application behaves consistently
+ * UTC is used so the application behaves consistently
  * regardless of the server's local timezone.
  */
 function getPeriodStartEnd(
@@ -157,9 +157,12 @@ export async function checkLimit(
       metric,
     });
 
-    // Fail closed.
-    // If we cannot verify usage, do not allow
-    // the organization to consume more usage.
+    /*
+     * Fail closed.
+     *
+     * If usage cannot be verified, do not allow
+     * additional usage.
+     */
     return {
       exceeded: true,
       remaining: 0,
@@ -196,6 +199,9 @@ export async function checkLimit(
 
 /**
  * Record usage for the current monthly period.
+ *
+ * This function ONLY records usage.
+ * It does not check the subscription limit.
  */
 export async function recordUsage(
   organizationId: string,
@@ -215,10 +221,6 @@ export async function recordUsage(
     period_end,
   } = getPeriodStartEnd(metric, now);
 
-  /*
-   * Find the usage record for this organization,
-   * metric and billing period.
-   */
   const {
     data: existingRecord,
     error: existingError,
@@ -245,7 +247,7 @@ export async function recordUsage(
   }
 
   /*
-   * No record exists for this month.
+   * No usage record exists for this period.
    * Create one.
    */
   if (!existingRecord) {
@@ -281,7 +283,7 @@ export async function recordUsage(
   }
 
   /*
-   * Record already exists.
+   * Usage record already exists.
    * Increment its count.
    */
   const newCount =
@@ -423,13 +425,16 @@ export async function getRemainingUsage(
 /**
  * Check usage limit and then record usage.
  *
- * Use this when the operation has already been
- * successfully completed or when consuming usage
- * before the operation is acceptable.
+ * This remains available for services where the operation
+ * should consume usage immediately after the check.
  *
- * For invoice creation, we intentionally use
- * checkLimit() first and recordUsage() only after
- * the invoice is successfully created.
+ * For operations such as email sending, prefer:
+ *
+ *   checkLimit()
+ *   perform operation
+ *   recordUsage()
+ *
+ * This prevents failed operations from consuming usage.
  */
 export async function checkAndRecordUsage(
   organizationId: string,
