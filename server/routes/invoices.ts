@@ -179,17 +179,12 @@ invoiceRouter.post(
 
       sendSuccess(res, { invoice }, 201);
     } catch (err) {
-      logger.error('Failed to create invoice', {
-        error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
-      });
-
-      sendError(
-        res,
-        'Failed to create invoice.',
-        'CREATE_INVOICE_FAILED',
-        500
-      );
+      return handleInvoiceError(
+    res,
+    err,
+    'Failed to create invoice.',
+    'CREATE_INVOICE_FAILED'
+  );
     }
   }
 );
