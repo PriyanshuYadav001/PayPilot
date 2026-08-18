@@ -7,17 +7,34 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../server/services/communication/communicationService', () => ({
-  communicationService: { sendMessage: mocks.sendMessage },
+  communicationService: {
+    sendMessage: mocks.sendMessage,
+  },
 }));
 
 vi.mock('../../server/services/invoiceService', () => ({
-  invoiceService: { getInvoice: mocks.getInvoice },
+  invoiceService: {
+    getInvoice: mocks.getInvoice,
+  },
 }));
 
 vi.mock('../../server/services/payment/paymentService', () => ({
-  createPaymentLink: (...args: unknown[]) => mocks.createPaymentLink(...args),
+  createPaymentLink: (...args: unknown[]) =>
+    mocks.createPaymentLink(...args),
 }));
 
+/**
+ * Mock Supabase client
+ *
+ * The important part here is that the query builder supports
+ * all methods used by the services under test, especially:
+ *
+ * .insert()
+ *
+ * The previous mock did not implement .insert(), which caused:
+ *
+ * supabaseServer.from(...).insert is not a function
+ */
 const m = vi.hoisted(() => {
   const tables: Record<string, Record<string, unknown>> = {};
 
@@ -25,10 +42,16 @@ const m = vi.hoisted(() => {
     const cfg = tables[table] ?? {};
 
     const chain = {
+      /**
+       * SELECT
+       */
       select(_cols?: unknown, _opts?: unknown) {
         return chain;
       },
 
+      /**
+       * FILTERS
+       */
       eq(_col: unknown, _val: unknown) {
         return chain;
       },
@@ -61,6 +84,9 @@ const m = vi.hoisted(() => {
         return chain;
       },
 
+      /**
+       * SORTING / PAGINATION
+       */
       order(_col: unknown, _opts?: unknown) {
         return chain;
       },
@@ -73,6 +99,45 @@ const m = vi.hoisted(() => {
         return chain;
       },
 
+      /**
+       * INSERT
+       *
+       * This was missing from the original mock.
+       *
+       * usageService.ts calls:
+       *
+       * supabaseServer
+       *   .from('usage_records')
+       *   .insert({...})
+       */
+      insert(_values: unknown) {
+        return chain;
+      },
+
+      /**
+       * UPDATE
+       */
+      update(_values: unknown) {
+        return chain;
+      },
+
+      /**
+       * UPSERT
+       */
+      upsert(_values: unknown, _options?: unknown) {
+        return chain;
+      },
+
+      /**
+       * DELETE
+       */
+      delete() {
+        return chain;
+      },
+
+      /**
+       * SINGLE RESULT
+       */
       single() {
         return Promise.resolve({
           data: cfg.single ?? null,
@@ -80,6 +145,9 @@ const m = vi.hoisted(() => {
         });
       },
 
+      /**
+       * OPTIONAL SINGLE RESULT
+       */
       maybeSingle() {
         return Promise.resolve({
           data: cfg.single ?? null,
@@ -87,6 +155,16 @@ const m = vi.hoisted(() => {
         });
       },
 
+      /**
+       * Allow the query chain to be awaited directly.
+       *
+       * Example:
+       *
+       * const { data, error } = await supabase
+       *   .from('table')
+       *   .select('*')
+       *   .eq(...)
+       */
       then(
         resolve: (value: {
           data: unknown;
@@ -104,12 +182,16 @@ const m = vi.hoisted(() => {
   });
 
   return {
-    supabaseServer: { from },
+    supabaseServer: {
+      from,
+    },
     tables,
   };
 });
 
-vi.mock('../../server/lib/supabaseClient', () => ({ supabaseServer: m.supabaseServer }));
+vi.mock('../../server/lib/supabaseClient', () => ({
+  supabaseServer: m.supabaseServer,
+}));
 
 import {
   sendInvoiceReminder,
@@ -161,19 +243,69 @@ const INVOICE = {
 
 describe('Email Follow-Up Service', () => {
   beforeEach(() => {
+    /**
+     * Reset all mocks between tests.
+     */
     vi.clearAllMocks();
+
+    /**
+     * Restore default mocked service behaviour.
+     */
     mocks.getInvoice.mockResolvedValue({ ...INVOICE });
-    mocks.createPaymentLink.mockResolvedValue({ shortUrl: 'https://pay.test/default' });
-    m.tables.organizations = { single: { id: ORG_ID, name: 'Test Business' }, singleError: null };
-    m.tables.payment_links = { single: null, singleError: null };
+
+    mocks.createPaymentLink.mockResolvedValue({
+      shortUrl: 'https://pay.test/default',
+    });
+
+    mocks.sendMessage.mockResolvedValue({
+      id: 'comm-1',
+    });
+
+    /**
+     * Mock organization lookup.
+     */
+    m.tables.organizations = {
+      single: {
+        id: ORG_ID,
+        name: 'Test Business',
+      },
+      singleError: null,
+    };
+
+    /**
+     * Default payment link:
+     * no existing active link.
+     */
+    m.tables.payment_links = {
+      single: null,
+      singleError: null,
+    };
+
+    /**
+     * usage_records needs to succeed when usageService
+     * calls .insert().
+     *
+     * Since insert() now returns the chain and the chain
+     * is awaitable, this resolves successfully.
+     */
+    m.tables.usage_records = {
+      data: [],
+      error: null,
+    };
   });
 
   describe('sendInvoiceReminder', () => {
     it('sends an invoice reminder email with correct content', async () => {
-      await sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID });
+      await sendInvoiceReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
 
       expect(mocks.sendMessage).toHaveBeenCalledOnce();
+
       const call = mocks.sendMessage.mock.calls[0];
+
       expect(call[0]).toBe(ORG_ID);
       expect(call[1].channel).toBe('email');
       expect(call[1].customerId).toBe(CUSTOMER_ID);
@@ -188,34 +320,65 @@ describe('Email Follow-Up Service', () => {
 
     it('includes payment link in email when available', async () => {
       m.tables.payment_links = {
-        single: { short_url: 'https://pay.test/abc', status: 'active', expires_at: '2099-12-31' },
+        single: {
+          short_url: 'https://pay.test/abc',
+          status: 'active',
+          expires_at: '2099-12-31',
+        },
         singleError: null,
       };
 
-      await sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID });
+      await sendInvoiceReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
 
       const message = mocks.sendMessage.mock.calls[0][1].message;
+
       expect(message).toContain('https://pay.test/abc');
     });
 
     it('creates a new payment link when none exists', async () => {
-      m.tables.payment_links = { single: null, singleError: null };
-      mocks.createPaymentLink.mockResolvedValue({ shortUrl: 'https://pay.test/new' });
+      m.tables.payment_links = {
+        single: null,
+        singleError: null,
+      };
 
-      await sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID });
+      mocks.createPaymentLink.mockResolvedValue({
+        shortUrl: 'https://pay.test/new',
+      });
+
+      await sendInvoiceReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
 
       expect(mocks.createPaymentLink).toHaveBeenCalledOnce();
-      expect(mocks.createPaymentLink.mock.calls[0][0]).toBe(ORG_ID);
-      expect(mocks.createPaymentLink.mock.calls[0][1].invoiceId).toBe(INVOICE_ID);
+
+      expect(
+        mocks.createPaymentLink.mock.calls[0][0],
+      ).toBe(ORG_ID);
+
+      expect(
+        mocks.createPaymentLink.mock.calls[0][1].invoiceId,
+      ).toBe(INVOICE_ID);
     });
   });
 
   describe('sendOverdueReminder', () => {
     it('sends an overdue reminder with overdue-themed content', async () => {
-      await sendOverdueReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID });
+      await sendOverdueReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
 
       expect(mocks.sendMessage).toHaveBeenCalledOnce();
+
       const call = mocks.sendMessage.mock.calls[0];
+
       expect(call[1].subject).toContain('INV-001');
       expect(call[1].message).toContain('Overdue');
       expect(call[1].metadata.type).toBe('overdue_reminder');
@@ -226,13 +389,22 @@ describe('Email Follow-Up Service', () => {
   describe('sendPaymentLink', () => {
     it('sends a payment link email with secure URL', async () => {
       m.tables.payment_links = {
-        single: { short_url: 'https://pay.test/xyz', status: 'active', expires_at: '2099-12-31' },
+        single: {
+          short_url: 'https://pay.test/xyz',
+          status: 'active',
+          expires_at: '2099-12-31',
+        },
         singleError: null,
       };
 
-      await sendPaymentLink({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID });
+      await sendPaymentLink({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
 
       const call = mocks.sendMessage.mock.calls[0];
+
       expect(call[1].subject).toContain('INV-001');
       expect(call[1].message).toContain('https://pay.test/xyz');
       expect(call[1].message).toContain('Secure Payment Link');
@@ -242,9 +414,15 @@ describe('Email Follow-Up Service', () => {
 
   describe('sendPaymentConfirmation', () => {
     it('sends a payment confirmation with paid amount', async () => {
-      await sendPaymentConfirmation({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID, amountPaid: 1180 });
+      await sendPaymentConfirmation({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+        amountPaid: 1180,
+      });
 
       const call = mocks.sendMessage.mock.calls[0];
+
       expect(call[1].subject).toContain('INV-001');
       expect(call[1].subject).toContain('Confirmed');
       expect(call[1].message).toContain('Payment Received');
@@ -263,11 +441,14 @@ describe('Email Follow-Up Service', () => {
       });
 
       const call = mocks.sendMessage.mock.calls[0];
+
       expect(call[1].subject).toContain('INV-001');
       expect(call[1].subject).toContain('Promise');
       expect(call[1].message).toContain('2026-09-15');
       expect(call[1].message).toContain('committed');
-      expect(call[1].metadata.type).toBe('payment_promise_reminder');
+      expect(call[1].metadata.type).toBe(
+        'payment_promise_reminder',
+      );
       expect(call[1].metadata.promiseDate).toBe('2026-09-15');
     });
   });
@@ -277,37 +458,61 @@ describe('Email Follow-Up Service', () => {
       mocks.getInvoice.mockResolvedValue(null);
 
       await expect(
-        sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID }),
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
       ).rejects.toThrow('Invoice inv-1 not found');
     });
 
     it('throws when customer has no email', async () => {
       mocks.getInvoice.mockResolvedValue({
         ...INVOICE,
-        customer: { ...CUSTOMER, email: null },
+        customer: {
+          ...CUSTOMER,
+          email: null,
+        },
       });
 
       await expect(
-        sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID }),
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
       ).rejects.toThrow('no email address');
     });
 
     it('throws when customer has DND enabled', async () => {
       mocks.getInvoice.mockResolvedValue({
         ...INVOICE,
-        customer: { ...CUSTOMER, isDnd: true },
+        customer: {
+          ...CUSTOMER,
+          isDnd: true,
+        },
       });
 
       await expect(
-        sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID }),
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
       ).rejects.toThrow('Do Not Disturb');
     });
 
     it('retries and fails after max retries', async () => {
-      mocks.sendMessage.mockRejectedValue(new Error('Network error'));
+      mocks.sendMessage.mockRejectedValue(
+        new Error('Network error'),
+      );
 
       await expect(
-        sendInvoiceReminder({ organizationId: ORG_ID, customerId: CUSTOMER_ID, invoiceId: INVOICE_ID }),
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
       ).rejects.toThrow('Network error');
 
       expect(mocks.sendMessage).toHaveBeenCalledTimes(3);
