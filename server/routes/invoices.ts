@@ -3,7 +3,11 @@ import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
 import { invoiceService } from '../services/invoiceService';
 import { validateBody, validateParams } from '../middleware/validate';
-import { invoiceCreateSchema, invoiceIdParamSchema, invoiceUpdateSchema } from '../validators/invoice';
+import {
+  invoiceCreateSchema,
+  invoiceIdParamSchema,
+  invoiceUpdateSchema,
+} from '../validators/invoice';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
@@ -23,37 +27,58 @@ invoiceRouter.get(
     try {
       const { organizationId } = req.tenant!;
 
-const page = Number(req.query.page) || 1;
-const limit = Number(req.query.limit) || 20;
-const searchTerm =
-  typeof req.query.search === 'string'
-    ? req.query.search
-    : undefined;
-const customerId =
-  typeof req.query.customerId === 'string'
-    ? req.query.customerId
-    : undefined;
-const status =
-  typeof req.query.status === 'string'
-    ? (req.query.status as any)
-    : undefined;
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 20;
 
-const invoices = await invoiceService.listInvoices(
-  organizationId,
-  customerId,
-  status,
-  searchTerm,
-  page,
-  limit
-);
+      const searchTerm =
+        typeof req.query.search === 'string'
+          ? req.query.search
+          : undefined;
 
-sendSuccess(res, { invoices });
+      const customerId =
+        typeof req.query.customerId === 'string'
+          ? req.query.customerId
+          : undefined;
+
+      const status =
+        typeof req.query.status === 'string'
+          ? (req.query.status as any)
+          : undefined;
+
+      const result = await invoiceService.listInvoices(
+        organizationId,
+        customerId,
+        status,
+        searchTerm,
+        page,
+        limit
+      );
+
+      sendSuccess(
+        res,
+        {
+          invoices: result.data,
+        },
+        200,
+        {
+          page: result.page,
+          limit: result.limit,
+          totalCount: result.total,
+          totalPages: result.totalPages,
+        }
+      );
     } catch (err) {
       logger.error('Failed to list invoices', {
         error: err instanceof Error ? err.message : String(err),
         organizationId: req.tenant!.organizationId,
       });
-      sendError(res, 'Failed to list invoices.', 'LIST_INVOICES_FAILED', 500);
+
+      sendError(
+        res,
+        'Failed to list invoices.',
+        'LIST_INVOICES_FAILED',
+        500
+      );
     }
   }
 );
@@ -69,10 +94,19 @@ invoiceRouter.get(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
-      const invoice = await invoiceService.getInvoice(organizationId, req.params.id as string);
+
+      const invoice = await invoiceService.getInvoice(
+        organizationId,
+        req.params.id as string
+      );
 
       if (!invoice) {
-        return sendError(res, 'Invoice not found.', 'NOT_FOUND', 404);
+        return sendError(
+          res,
+          'Invoice not found.',
+          'NOT_FOUND',
+          404
+        );
       }
 
       sendSuccess(res, { invoice });
@@ -81,7 +115,13 @@ invoiceRouter.get(
         error: err instanceof Error ? err.message : String(err),
         organizationId: req.tenant!.organizationId,
       });
-      sendError(res, 'Failed to get invoice.', 'GET_INVOICE_FAILED', 500);
+
+      sendError(
+        res,
+        'Failed to get invoice.',
+        'GET_INVOICE_FAILED',
+        500
+      );
     }
   }
 );
@@ -97,7 +137,12 @@ invoiceRouter.post(
   async (req: Request, res: Response) => {
     try {
       const { organizationId, userId } = req.tenant!;
-      const invoice = await invoiceService.createInvoice(organizationId, userId, req.body as any);
+
+      const invoice = await invoiceService.createInvoice(
+        organizationId,
+        userId,
+        req.body as any
+      );
 
       sendSuccess(res, { invoice }, 201);
     } catch (err) {
@@ -105,13 +150,19 @@ invoiceRouter.post(
         error: err instanceof Error ? err.message : String(err),
         organizationId: req.tenant!.organizationId,
       });
-      sendError(res, 'Failed to create invoice.', 'CREATE_INVOICE_FAILED', 500);
+
+      sendError(
+        res,
+        'Failed to create invoice.',
+        'CREATE_INVOICE_FAILED',
+        500
+      );
     }
   }
 );
 
 /**
- * PUT /api/invoices/:id
+ * PATCH /api/invoices/:id
  * Update an invoice - OWNER, ADMIN can write
  */
 invoiceRouter.patch(
@@ -122,6 +173,7 @@ invoiceRouter.patch(
   async (req: Request, res: Response) => {
     try {
       const { organizationId } = req.tenant!;
+
       const invoice = await invoiceService.updateInvoice(
         organizationId,
         req.params.id as string,
@@ -129,7 +181,12 @@ invoiceRouter.patch(
       );
 
       if (!invoice) {
-        return sendError(res, 'Invoice not found.', 'INVOICE_NOT_FOUND', 404);
+        return sendError(
+          res,
+          'Invoice not found.',
+          'INVOICE_NOT_FOUND',
+          404
+        );
       }
 
       sendSuccess(res, { invoice });
@@ -161,12 +218,21 @@ invoiceRouter.delete(
     try {
       const { organizationId } = req.tenant!;
 
-      await invoiceService.deleteInvoice(
+      const invoice = await invoiceService.deleteInvoice(
         organizationId,
         req.params.id as string
       );
 
-      sendSuccess(res, { success: true });
+      if (!invoice) {
+        return sendError(
+          res,
+          'Invoice not found.',
+          'NOT_FOUND',
+          404
+        );
+      }
+
+      sendSuccess(res, { invoice });
     } catch (err) {
       logger.error('Failed to delete invoice', {
         error: err instanceof Error ? err.message : String(err),
