@@ -219,18 +219,13 @@ invoiceRouter.patch(
 
       sendSuccess(res, { invoice });
     } catch (err) {
-      logger.error('Failed to update invoice', {
-        error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
-      });
-
-      sendError(
-        res,
-        'Failed to update invoice.',
-        'UPDATE_INVOICE_FAILED',
-        500
-      );
-    }
+  return handleInvoiceError(
+    res,
+    err,
+    'Failed to update invoice.',
+    'UPDATE_INVOICE_FAILED'
+  );
+}
   }
 );
 
@@ -261,17 +256,12 @@ invoiceRouter.delete(
       }
 
       sendSuccess(res, { invoice });
-    } catch (err) {
-      logger.error('Failed to delete invoice', {
-        error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
-      });
-
-      sendError(
+        } catch (err) {
+      return handleInvoiceError(
         res,
+        err,
         'Failed to delete invoice.',
-        'DELETE_INVOICE_FAILED',
-        500
+        'DELETE_INVOICE_FAILED'
       );
     }
   }
