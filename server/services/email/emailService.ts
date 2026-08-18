@@ -24,6 +24,8 @@ interface FollowUpEmailContext {
   organizationId: string;
   customerId: string;
   invoiceId: string;
+  amountPaid?: number;
+  promiseDate?: string;
 }
 
 interface LoadedContext extends FollowUpEmailContext {
@@ -227,7 +229,7 @@ export async function sendPaymentConfirmation(
     customerName: ctx.customer.contactName,
     businessName: ctx.businessName,
     invoiceNumber: ctx.invoice.invoiceNumber,
-    amountDue: ctx.invoice.amountDue,
+    amountDue: input.amountPaid ?? ctx.invoice.amountDue,
     currency: ctx.invoice.currency,
     dueDate: ctx.invoice.dueDate,
   });
