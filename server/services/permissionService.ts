@@ -27,12 +27,13 @@ export const ROLE_PERMISSIONS = {
   ],
   
   member: [
-    'customers.read',          // Can view own customers (limited)
-    'invoices.read',           // Can view own invoices (limited)
-    'payments.read',           // Can view payments
-    'followups.read',          // Can view follow-ups
-    'communications.read',     // Can view communications
-  ],
+  'customers.read',
+  'invoices.read',
+  'payments.read',
+  'followups.read',
+  'followups.write',
+  'communications.read',
+],
 };
 
 /**

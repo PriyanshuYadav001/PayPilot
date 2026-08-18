@@ -75,7 +75,13 @@ followUpRuleRouter.get(
         );
       }
 
-      sendSuccess(res, { rule });
+      sendSuccess(res, {
+  rules: rules.rules,
+  totalCount: rules.totalCount,
+  page: rules.page,
+  limit: rules.limit,
+  totalPages: rules.totalPages,
+});
     } catch (err) {
       logger.error('Failed to get follow-up rule', {
         error: err instanceof Error ? err.message : String(err),
