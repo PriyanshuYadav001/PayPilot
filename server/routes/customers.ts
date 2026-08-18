@@ -1,10 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
-import { invoiceService } from '../services/invoiceService';
 import { customerService, CustomerError } from '../services/customerService';
 import { validateBody, validateParams } from '../middleware/validate';
-import { customerCreateSchema, customerUpdateSchema, customerIdParamSchema } from '../validators/customer';
+import {
+  customerCreateSchema,
+  customerUpdateSchema,
+  customerIdParamSchema,
+} from '../validators/customer';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
 import { requirePermission } from '../services/permissionService';
@@ -33,9 +36,10 @@ customerRouter.get(
       const result = await customerService.listCustomers(organizationId, {
         page,
         limit,
-        search: typeof req.query.search === 'string'
-          ? req.query.search
-          : undefined,
+        search:
+          typeof req.query.search === 'string'
+            ? req.query.search
+            : undefined,
         isDnd:
           req.query.isDnd === 'true' || req.query.isDnd === 'false'
             ? req.query.isDnd
@@ -50,15 +54,19 @@ customerRouter.get(
             : undefined,
       });
 
-      sendSuccess(res, {
-        customers: result.customers,
-        pagination: {
+      return sendSuccess(
+        res,
+        {
+          customers: result.customers,
+        },
+        200,
+        {
           page: result.page,
           limit: result.limit,
           totalCount: result.totalCount,
           totalPages: result.totalPages,
-        },
-      });
+        }
+      );
     } catch (err) {
       if (err instanceof CustomerError) {
         return sendError(
@@ -93,15 +101,47 @@ customerRouter.get(
   requirePermission('customers.read'),
   validateParams(customerIdParamSchema),
   async (req: Request, res: Response) => {
+    const { organizationId } = req.tenant!;
+    const { id } = req.params;
+
     try {
-      const { organizationId } = req.tenant!;
-      sendSuccess(res, { customer: null }); // Placeholder
+      const customer = await customerService.getCustomer(
+        organizationId,
+        id
+      );
+
+      if (!customer) {
+        return sendError(
+          res,
+          'Customer not found.',
+          'NOT_FOUND',
+          404
+        );
+      }
+
+      return sendSuccess(res, { customer });
     } catch (err) {
+      if (err instanceof CustomerError) {
+        return sendError(
+          res,
+          err.message,
+          err.code,
+          err.statusCode
+        );
+      }
+
       logger.error('Failed to get customer', {
         error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
+        organizationId,
+        customerId: id,
       });
-      sendError(res, 'Failed to get customer.', 'GET_CUSTOMER_FAILED', 500);
+
+      return sendError(
+        res,
+        'Failed to get customer.',
+        'GET_CUSTOMER_FAILED',
+        500
+      );
     }
   }
 );
@@ -115,39 +155,146 @@ customerRouter.post(
   requirePermission('customers.write'),
   validateBody(customerCreateSchema),
   async (req: Request, res: Response) => {
+    const { organizationId } = req.tenant!;
+
     try {
-      const { organizationId, userId } = req.tenant!;
-      sendSuccess(res, { customer: null }, 201); // Placeholder
+      const customer = await customerService.createCustomer(
+        organizationId,
+        req.body
+      );
+
+      return sendSuccess(res, { customer }, 201);
     } catch (err) {
+      if (err instanceof CustomerError) {
+        return sendError(
+          res,
+          err.message,
+          err.code,
+          err.statusCode
+        );
+      }
+
       logger.error('Failed to create customer', {
         error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
+        organizationId,
       });
-      sendError(res, 'Failed to create customer.', 'CREATE_CUSTOMER_FAILED', 500);
+
+      return sendError(
+        res,
+        'Failed to create customer.',
+        'CREATE_CUSTOMER_FAILED',
+        500
+      );
     }
   }
 );
 
 /**
- * PUT /api/customers/:id
+ * PATCH /api/customers/:id
  * Update a customer - OWNER, ADMIN can write
  */
-customerRouter.put(
+customerRouter.patch(
   '/:id',
   requirePermission('customers.write'),
   validateParams(customerIdParamSchema),
   validateBody(customerUpdateSchema),
   async (req: Request, res: Response) => {
+    const { organizationId } = req.tenant!;
+    const { id } = req.params;
+
     try {
-      const { organizationId } = req.tenant!;
-      sendSuccess(res, { customer: null }); // Placeholder
+      const customer = await customerService.updateCustomer(
+        organizationId,
+        id,
+        req.body
+      );
+
+      if (!customer) {
+        return sendError(
+          res,
+          'Customer not found.',
+          'NOT_FOUND',
+          404
+        );
+      }
+
+      return sendSuccess(res, { customer });
     } catch (err) {
+      if (err instanceof CustomerError) {
+        return sendError(
+          res,
+          err.message,
+          err.code,
+          err.statusCode
+        );
+      }
+
       logger.error('Failed to update customer', {
         error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
+        organizationId,
+        customerId: id,
       });
-      sendError(res, 'Failed to update customer.', 'UPDATE_CUSTOMER_FAILED', 500);
+
+      return sendError(
+        res,
+        'Failed to update customer.',
+        'UPDATE_CUSTOMER_FAILED',
+        500
+      );
     }
   }
 );
 
+/**
+ * DELETE /api/customers/:id
+ * Delete a customer - OWNER, ADMIN can write
+ */
+customerRouter.delete(
+  '/:id',
+  requirePermission('customers.write'),
+  validateParams(customerIdParamSchema),
+  async (req: Request, res: Response) => {
+    const { organizationId } = req.tenant!;
+    const { id } = req.params;
+
+    try {
+      const customer = await customerService.deleteCustomer(
+        organizationId,
+        id
+      );
+
+      if (!customer) {
+        return sendError(
+          res,
+          'Customer not found.',
+          'NOT_FOUND',
+          404
+        );
+      }
+
+      return sendSuccess(res, { customer });
+    } catch (err) {
+      if (err instanceof CustomerError) {
+        return sendError(
+          res,
+          err.message,
+          err.code,
+          err.statusCode
+        );
+      }
+
+      logger.error('Failed to delete customer', {
+        error: err instanceof Error ? err.message : String(err),
+        organizationId,
+        customerId: id,
+      });
+
+      return sendError(
+        res,
+        'Failed to delete customer.',
+        'DELETE_CUSTOMER_FAILED',
+        500
+      );
+    }
+  }
+);
