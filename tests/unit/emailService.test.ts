@@ -1,9 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const usageMocks = vi.hoisted(() => ({
+  checkLimit: vi.fn(),
+  recordUsage: vi.fn(),
+}));
+
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn().mockResolvedValue({ id: 'comm-1' }),
   getInvoice: vi.fn(),
   createPaymentLink: vi.fn(),
+}));
+
+vi.mock('../../server/services/usageService', () => ({
+  Metric: {
+    invoices_created: 'invoices_created',
+    whatsapp_sent: 'whatsapp_sent',
+    emails_sent: 'emails_sent',
+    calls_made: 'calls_made',
+    ai_analyses: 'ai_analyses',
+  },
+
+  checkLimit: usageMocks.checkLimit,
+  recordUsage: usageMocks.recordUsage,
+
+  // Keep this in case another part of the test imports it.
+  checkAndRecordUsage: vi.fn(),
 }));
 
 vi.mock('../../server/services/communication/communicationService', () => ({
