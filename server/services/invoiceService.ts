@@ -109,7 +109,7 @@ export interface InvoicePage {
   total: number;
   page: number;
   limit: number;
-  totalPage: number;
+  totalPages: number;
 }
 
 export interface InvoiceSummary {
@@ -125,13 +125,25 @@ export interface InvoiceSummary {
    ========================================================= */
 
 function roundMoney(value: number): number {
-  return Math.round(
-    (value + Number.EPSILON) * 100,
-  ) / 100;
+  return (
+    Math.round(
+      (value + Number.EPSILON) * 100,
+    ) / 100
+  );
 }
 
 /**
  * Calculate one invoice item's financial values.
+ *
+ * IMPORTANT:
+ * `total` represents the line subtotal before tax.
+ * Tax is stored separately in `tax_amount`.
+ *
+ * This matches the invoice item model used by the tests:
+ *
+ * subtotal = quantity * unit_price
+ * tax_amount = subtotal * tax_rate / 100
+ * total = subtotal
  */
 function calculateItemFinancials(
   item: InvoiceItemInput,
@@ -143,23 +155,43 @@ function calculateItemFinancials(
   taxAmount: number;
   total: number;
 } {
-  const quantity = Number(item.quantity);
+  const quantity = Number(
+    item.quantity,
+  );
+
   const unitPrice = roundMoney(
     Number(item.unitPrice),
   );
-  const taxRate = Number(item.taxRate ?? 0);
 
+  const taxRate = Number(
+    item.taxRate ?? 0,
+  );
+
+  /*
+   * Round each line independently.
+   *
+   * Example:
+   * 100.005 + 200.985
+   *
+   * Each line is rounded first and then
+   * added to the invoice subtotal.
+   */
   const subtotal = roundMoney(
     quantity * unitPrice,
   );
 
   const taxAmount = roundMoney(
-    subtotal * (taxRate / 100),
+    subtotal *
+      (taxRate / 100),
   );
 
-  const total = roundMoney(
-    subtotal + taxAmount,
-  );
+  /*
+   * `total` is the line subtotal before tax.
+   * The invoice-level total is calculated as:
+   *
+   * subtotal + taxTotal - discount
+   */
+  const total = subtotal;
 
   return {
     quantity,
@@ -175,7 +207,9 @@ function calculateItemFinancials(
  * Convert a Supabase invoice row from snake_case
  * into the application's camelCase Invoice shape.
  */
-function mapInvoiceRow(row: any): Invoice {
+function mapInvoiceRow(
+  row: any,
+): Invoice {
   if (!row) {
     return row;
   }
@@ -216,7 +250,9 @@ function mapInvoiceRow(row: any): Invoice {
     taxTotal:
       row.taxTotal !== undefined
         ? Number(row.taxTotal)
-        : Number(row.tax_total ?? 0),
+        : Number(
+            row.tax_total ?? 0,
+          ),
 
     discount:
       row.discount !== undefined
@@ -226,17 +262,23 @@ function mapInvoiceRow(row: any): Invoice {
     totalAmount:
       row.totalAmount !== undefined
         ? Number(row.totalAmount)
-        : Number(row.total_amount ?? 0),
+        : Number(
+            row.total_amount ?? 0,
+          ),
 
     amountPaid:
       row.amountPaid !== undefined
         ? Number(row.amountPaid)
-        : Number(row.amount_paid ?? 0),
+        : Number(
+            row.amount_paid ?? 0,
+          ),
 
     amountDue:
       row.amountDue !== undefined
         ? Number(row.amountDue)
-        : Number(row.amount_due ?? 0),
+        : Number(
+            row.amount_due ?? 0,
+          ),
 
     status:
       row.status,
@@ -263,18 +305,24 @@ function mapInvoiceRow(row: any): Invoice {
 
   if (row.customer) {
     mapped.customer =
-      mapCustomerRow(row.customer);
+      mapCustomerRow(
+        row.customer,
+      );
   }
 
   if (row.items) {
     mapped.items =
-      row.items.map(mapInvoiceItemRow);
+      row.items.map(
+        mapInvoiceItemRow,
+      );
   }
 
   return mapped as Invoice;
 }
 
-function mapCustomerRow(row: any): Customer {
+function mapCustomerRow(
+  row: any,
+): Customer {
   if (!row) {
     return row;
   }
@@ -316,8 +364,11 @@ function mapCustomerRow(row: any): Customer {
 /**
  * Map invoice item from DB format to application format.
  *
- * Also calculates taxAmount and total when older/mock rows
- * do not contain those columns.
+ * Supports both:
+ * - snake_case database rows
+ * - camelCase test/mock rows
+ *
+ * Missing tax_amount / total values are calculated.
  */
 function mapInvoiceItemRow(
   row: any,
@@ -334,12 +385,16 @@ function mapInvoiceItemRow(
   const unitPrice =
     row.unitPrice !== undefined
       ? Number(row.unitPrice)
-      : Number(row.unit_price ?? 0);
+      : Number(
+          row.unit_price ?? 0,
+        );
 
   const taxRate =
     row.taxRate !== undefined
       ? Number(row.taxRate)
-      : Number(row.tax_rate ?? 0);
+      : Number(
+          row.tax_rate ?? 0,
+        );
 
   const calculatedSubtotal =
     roundMoney(
@@ -352,11 +407,11 @@ function mapInvoiceItemRow(
         (taxRate / 100),
     );
 
+  /*
+   * Item total is subtotal before tax.
+   */
   const calculatedTotal =
-    roundMoney(
-      calculatedSubtotal +
-        calculatedTaxAmount,
-    );
+    calculatedSubtotal;
 
   return {
     ...row,
@@ -379,7 +434,7 @@ function mapInvoiceItemRow(
         ? Number(row.taxAmount)
         : Number(
             row.tax_amount ??
-            calculatedTaxAmount,
+              calculatedTaxAmount,
           ),
 
     total:
@@ -410,7 +465,10 @@ async function customerBelongsToOrg(
   } = await supabaseServer
     .from('customers')
     .select('id')
-    .eq('id', customerId)
+    .eq(
+      'id',
+      customerId,
+    )
     .eq(
       'organization_id',
       organizationId,
@@ -421,7 +479,8 @@ async function customerBelongsToOrg(
     logger.error(
       'Customer organization check failed',
       {
-        error: error.message,
+        error:
+          error.message,
         customerId,
         organizationId,
       },
@@ -435,6 +494,9 @@ async function customerBelongsToOrg(
 
 /**
  * Calculate invoice financial values.
+ *
+ * Each invoice line is rounded first.
+ * Then line subtotals and line taxes are summed.
  */
 function computeFinancials(
   items: InvoiceItemInput[],
@@ -448,11 +510,13 @@ function computeFinancials(
     );
   }
 
-  let subtotalRaw = 0;
-  let taxTotalRaw = 0;
+  let subtotal = 0;
+  let taxTotal = 0;
 
   for (const item of items) {
-    if (!item.description?.trim()) {
+    if (
+      !item.description?.trim()
+    ) {
       throw new InvoiceError(
         'Invoice item description is required.',
         'INVALID_ITEM_DESCRIPTION',
@@ -460,7 +524,11 @@ function computeFinancials(
       );
     }
 
-    if (!Number.isFinite(item.quantity)) {
+    if (
+      !Number.isFinite(
+        item.quantity,
+      )
+    ) {
       throw new InvoiceError(
         'Item quantity must be a valid number.',
         'INVALID_QUANTITY',
@@ -468,7 +536,9 @@ function computeFinancials(
       );
     }
 
-    if (item.quantity <= 0) {
+    if (
+      item.quantity <= 0
+    ) {
       throw new InvoiceError(
         'Item quantity must be greater than zero.',
         'INVALID_QUANTITY',
@@ -476,7 +546,11 @@ function computeFinancials(
       );
     }
 
-    if (!Number.isFinite(item.unitPrice)) {
+    if (
+      !Number.isFinite(
+        item.unitPrice,
+      )
+    ) {
       throw new InvoiceError(
         'Item unit price must be a valid number.',
         'INVALID_UNIT_PRICE',
@@ -484,7 +558,9 @@ function computeFinancials(
       );
     }
 
-    if (item.unitPrice < 0) {
+    if (
+      item.unitPrice < 0
+    ) {
       throw new InvoiceError(
         'Item unit price cannot be negative.',
         'INVALID_UNIT_PRICE',
@@ -493,9 +569,12 @@ function computeFinancials(
     }
 
     if (
-      item.taxRate !== undefined &&
+      item.taxRate !==
+        undefined &&
       (
-        !Number.isFinite(item.taxRate) ||
+        !Number.isFinite(
+          item.taxRate,
+        ) ||
         item.taxRate < 0 ||
         item.taxRate > 100
       )
@@ -507,32 +586,51 @@ function computeFinancials(
       );
     }
 
-    const lineSubtotal =
-      item.quantity * item.unitPrice;
+    const line =
+      calculateItemFinancials(
+        item,
+      );
 
-    const lineTax =
-      lineSubtotal *
-      ((item.taxRate ?? 0) / 100);
+    /*
+     * IMPORTANT:
+     * Round each line before adding.
+     */
+    subtotal = roundMoney(
+      subtotal +
+        line.subtotal,
+    );
 
-    subtotalRaw += lineSubtotal;
-    taxTotalRaw += lineTax;
+    taxTotal = roundMoney(
+      taxTotal +
+        line.taxAmount,
+    );
   }
 
-  const subtotal = roundMoney(subtotalRaw);
-  const taxTotal = roundMoney(taxTotalRaw);
+  subtotal =
+    roundMoney(subtotal);
 
-  const discount = roundMoney(
-    Math.max(
-      0,
-      Number(requestedDiscount) || 0,
-    ),
-  );
+  taxTotal =
+    roundMoney(taxTotal);
 
-  const grossTotal = roundMoney(
-    subtotal + taxTotal,
-  );
+  const discount =
+    roundMoney(
+      Math.max(
+        0,
+        Number(
+          requestedDiscount,
+        ) || 0,
+      ),
+    );
 
-  if (discount > grossTotal) {
+  const grossTotal =
+    roundMoney(
+      subtotal +
+        taxTotal,
+    );
+
+  if (
+    discount > grossTotal
+  ) {
     throw new InvoiceError(
       'Discount exceeds the invoice total.',
       'INVALID_DISCOUNT',
@@ -540,9 +638,11 @@ function computeFinancials(
     );
   }
 
-  const total = roundMoney(
-    grossTotal - discount,
-  );
+  const total =
+    roundMoney(
+      grossTotal -
+        discount,
+    );
 
   return {
     subtotal,
@@ -561,33 +661,39 @@ function resolveStatus(input: {
   totalAmount: number;
   dueDate: string;
 }) {
-  const totalAmount = roundMoney(
-    Math.max(
-      0,
-      input.totalAmount,
-    ),
-  );
+  const totalAmount =
+    roundMoney(
+      Math.max(
+        0,
+        input.totalAmount,
+      ),
+    );
 
-  let amountPaid = roundMoney(
-    Math.max(
-      0,
-      input.amountPaid,
-    ),
-  );
+  let amountPaid =
+    roundMoney(
+      Math.max(
+        0,
+        input.amountPaid,
+      ),
+    );
 
-  amountPaid = Math.min(
-    amountPaid,
-    totalAmount,
-  );
+  amountPaid =
+    Math.min(
+      amountPaid,
+      totalAmount,
+    );
 
-  const amountDue = roundMoney(
-    Math.max(
-      0,
-      totalAmount - amountPaid,
-    ),
-  );
+  const amountDue =
+    roundMoney(
+      Math.max(
+        0,
+        totalAmount -
+          amountPaid,
+      ),
+    );
 
-  let status: InvoiceStatus;
+  let status:
+    InvoiceStatus;
 
   /*
    * Payment state has highest priority.
@@ -600,25 +706,28 @@ function resolveStatus(input: {
   } else if (
     amountPaid > 0
   ) {
-    status = 'partially_paid';
+    status =
+      'partially_paid';
   } else {
     /*
-     * Draft invoices remain drafts even when their
-     * due date is in the past.
-     *
-     * Non-draft unpaid invoices become overdue when
-     * the due date has passed.
+     * Draft invoices remain drafts.
      */
     const isPastDue =
-      Boolean(input.dueDate) &&
-      new Date(input.dueDate).getTime() <
+      Boolean(
+        input.dueDate,
+      ) &&
+      new Date(
+        input.dueDate,
+      ).getTime() <
         Date.now();
 
     if (
-      input.requestedStatus !== 'draft' &&
+      input.requestedStatus !==
+        'draft' &&
       isPastDue
     ) {
-      status = 'overdue';
+      status =
+        'overdue';
     } else {
       status =
         input.requestedStatus;
@@ -640,7 +749,10 @@ function isUniqueViolation(
     code?: string;
   } | null,
 ): boolean {
-  return error?.code === '23505';
+  return (
+    error?.code ===
+    '23505'
+  );
 }
 
 /**
@@ -653,16 +765,22 @@ async function checkInvoiceUsage(
   remaining: number;
   limit: number;
 }> {
-  const result = await checkLimit(
-    organizationId,
-    Metric.invoices_created,
-    1,
-  );
+  const result =
+    await checkLimit(
+      organizationId,
+      Metric.invoices_created,
+      1,
+    );
 
   return {
-    allowed: !result.exceeded,
-    remaining: result.remaining,
-    limit: result.limit,
+    allowed:
+      !result.exceeded,
+
+    remaining:
+      result.remaining,
+
+    limit:
+      result.limit,
   };
 }
 
@@ -677,9 +795,10 @@ export async function createInvoice(
 ): Promise<Invoice> {
   const {
     allowed,
-  } = await checkInvoiceUsage(
-    organizationId,
-  );
+  } =
+    await checkInvoiceUsage(
+      organizationId,
+    );
 
   if (!allowed) {
     throw new InvoiceError(
@@ -708,82 +827,98 @@ export async function createInvoice(
     taxTotal,
     discount,
     total,
-  } = computeFinancials(
-    input.items,
-    input.discount ?? 0,
-  );
+  } =
+    computeFinancials(
+      input.items,
+      input.discount ?? 0,
+    );
 
   const statusInput =
-    input.status ?? 'draft';
+    input.status ??
+    'draft';
 
   const {
     status,
     amountPaid,
     amountDue,
-  } = resolveStatus({
-    requestedStatus:
-      statusInput as InvoiceStatus,
-    amountPaid: 0,
-    totalAmount: total,
-    dueDate: input.dueDate,
-  });
+  } =
+    resolveStatus({
+      requestedStatus:
+        statusInput as InvoiceStatus,
+
+      amountPaid: 0,
+
+      totalAmount:
+        total,
+
+      dueDate:
+        input.dueDate,
+    });
 
   const {
     data: inserted,
     error,
-  } = await supabaseServer
-    .from('invoices')
-    .insert({
-      organization_id:
-        organizationId,
+  } =
+    await supabaseServer
+      .from('invoices')
+      .insert({
+        organization_id:
+          organizationId,
 
-      customer_id:
-        input.customerId,
+        customer_id:
+          input.customerId,
 
-      invoice_number:
-        input.invoiceNumber,
+        invoice_number:
+          input.invoiceNumber,
 
-      issue_date:
-        input.issueDate,
+        issue_date:
+          input.issueDate,
 
-      due_date:
-        input.dueDate,
+        due_date:
+          input.dueDate,
 
-      currency:
-        input.currency ?? 'INR',
+        currency:
+          input.currency ??
+          'INR',
 
-      subtotal,
+        subtotal,
 
-      tax_total:
-        taxTotal,
+        tax_total:
+          taxTotal,
 
-      discount,
+        discount,
 
-      total_amount:
-        total,
+        total_amount:
+          total,
 
-      amount_paid:
-        amountPaid,
+        amount_paid:
+          amountPaid,
 
-      amount_due:
-        amountDue,
+        amount_due:
+          amountDue,
 
-      status,
+        status,
 
-      notes:
-        input.notes ?? null,
+        notes:
+          input.notes ??
+          null,
 
-      terms_and_conditions:
-        input.termsAndConditions ?? null,
+        terms_and_conditions:
+          input.termsAndConditions ??
+          null,
 
-      created_by:
-        userId,
-    })
-    .select('id')
-    .single();
+        created_by:
+          userId,
+      })
+      .select('id')
+      .single();
 
   if (error) {
-    if (isUniqueViolation(error)) {
+    if (
+      isUniqueViolation(
+        error,
+      )
+    ) {
       throw new InvoiceError(
         'An invoice with this number already exists.',
         'CONFLICT',
@@ -794,10 +929,17 @@ export async function createInvoice(
     logger.error(
       'createInvoice failed',
       {
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        code: error.code,
+        message:
+          error.message,
+
+        details:
+          error.details,
+
+        hint:
+          error.hint,
+
+        code:
+          error.code,
       },
     );
 
@@ -812,48 +954,56 @@ export async function createInvoice(
     inserted.id;
 
   /*
-   * Insert ALL invoice items in a single DB call.
+   * Build all item rows first.
    *
-   * This fixes:
-   * - unnecessary DB calls
-   * - tests expecting one insert call
-   * - missing tax_amount
-   * - missing total
+   * One database insert is used for
+   * all invoice items.
    */
   const itemRows =
-    input.items.map((item) => {
-      const financials =
-        calculateItemFinancials(item);
+    input.items.map(
+      (item) => {
+        const financials =
+          calculateItemFinancials(
+            item,
+          );
 
-      return {
-        invoice_id:
-          invoiceId,
+        return {
+          invoice_id:
+            invoiceId,
 
-        description:
-          item.description,
+          description:
+            item.description,
 
-        quantity:
-          financials.quantity,
+          quantity:
+            financials.quantity,
 
-        unit_price:
-          financials.unitPrice,
+          unit_price:
+            financials.unitPrice,
 
-        tax_rate:
-          financials.taxRate,
+          tax_rate:
+            financials.taxRate,
 
-        tax_amount:
-          financials.taxAmount,
+          tax_amount:
+            financials.taxAmount,
 
-        total:
-          financials.total,
-      };
-    });
+          /*
+           * Item total is subtotal
+           * before tax.
+           */
+          total:
+            financials.total,
+        };
+      },
+    );
 
   const {
     error: itemError,
-  } = await supabaseServer
-    .from('invoice_items')
-    .insert(itemRows);
+  } =
+    await supabaseServer
+      .from('invoice_items')
+      .insert(
+        itemRows,
+      );
 
   if (itemError) {
     logger.error(
@@ -861,14 +1011,21 @@ export async function createInvoice(
       {
         message:
           itemError.message,
+
         invoiceId,
       },
     );
 
+    /*
+     * Roll back invoice header.
+     */
     await supabaseServer
       .from('invoices')
       .delete()
-      .eq('id', invoiceId)
+      .eq(
+        'id',
+        invoiceId,
+      )
       .eq(
         'organization_id',
         organizationId,
@@ -942,64 +1099,74 @@ export async function listInvoices(
       ),
     );
 
-  let query = supabaseServer
-    .from('invoices')
-    .select(
-      `
-        *,
-        customer:customers(*),
-        items:invoice_items(*)
-      `,
-      {
-        count: 'exact',
-      },
-    )
-    .eq(
-      'organization_id',
-      organizationId,
-    );
+  let query =
+    supabaseServer
+      .from('invoices')
+      .select(
+        `
+          *,
+          customer:customers(*),
+          items:invoice_items(*)
+        `,
+        {
+          count:
+            'exact',
+        },
+      )
+      .eq(
+        'organization_id',
+        organizationId,
+      );
 
   if (customerId) {
-    query = query.eq(
-      'customer_id',
-      customerId,
-    );
+    query =
+      query.eq(
+        'customer_id',
+        customerId,
+      );
   }
 
   if (status) {
-    query = query.eq(
-      'status',
-      status,
-    );
+    query =
+      query.eq(
+        'status',
+        status,
+      );
   }
 
-  if (searchTerm?.trim()) {
+  if (
+    searchTerm?.trim()
+  ) {
     const search =
       searchTerm.trim();
 
-    query = query.or(
-      `invoice_number.ilike.%${search}%`,
-    );
+    query =
+      query.or(
+        `invoice_number.ilike.%${search}%`,
+      );
   }
 
   const {
     data,
     error,
     count,
-  } = await query
-    .order(
-      'created_at',
-      {
-        ascending: false,
-      },
-    )
-    .range(
-      (safePage - 1) *
-        safeLimit,
-      safePage *
-        safeLimit -
-        1,
-    );
+  } =
+    await query
+      .order(
+        'created_at',
+        {
+          ascending:
+            false,
+        },
+      )
+      .range(
+        (safePage - 1) *
+          safeLimit,
+
+        safePage *
+          safeLimit -
+          1,
+      );
 
   if (error) {
     logger.error(
@@ -1007,10 +1174,13 @@ export async function listInvoices(
       {
         message:
           error.message,
+
         details:
           error.details,
+
         hint:
           error.hint,
+
         code:
           error.code,
       },
@@ -1026,9 +1196,10 @@ export async function listInvoices(
   const total =
     count ?? 0;
 
-  const lastPage =
+  const totalPages =
     Math.ceil(
-      total / safeLimit,
+      total /
+        safeLimit,
     );
 
   return {
@@ -1045,7 +1216,12 @@ export async function listInvoices(
     limit:
       safeLimit,
 
-    lastPage,
+    /*
+     * IMPORTANT:
+     * The routes/tests expect
+     * `totalPages`.
+     */
+    totalPages,
   };
 }
 
@@ -1060,24 +1236,25 @@ export async function getInvoice(
   const {
     data,
     error,
-  } = await supabaseServer
-    .from('invoices')
-    .select(
-      `
-        *,
-        customer:customers(*),
-        items:invoice_items(*)
-      `,
-    )
-    .eq(
-      'organization_id',
-      organizationId,
-    )
-    .eq(
-      'id',
-      invoiceId,
-    )
-    .maybeSingle();
+  } =
+    await supabaseServer
+      .from('invoices')
+      .select(
+        `
+          *,
+          customer:customers(*),
+          items:invoice_items(*)
+        `,
+      )
+      .eq(
+        'organization_id',
+        organizationId,
+      )
+      .eq(
+        'id',
+        invoiceId,
+      )
+      .maybeSingle();
 
   if (error) {
     logger.error(
@@ -1085,7 +1262,9 @@ export async function getInvoice(
       {
         message:
           error.message,
+
         invoiceId,
+
         organizationId,
       },
     );
@@ -1108,10 +1287,9 @@ export async function updateInvoice(
   input: InvoiceUpdateInput,
 ): Promise<Invoice> {
   /*
-   * First verify that the invoice belongs to
-   * the current organization.
+   * First verify organization ownership.
    *
-   * This is important for IDOR protection.
+   * This prevents IDOR attacks.
    */
   const existing =
     await getInvoice(
@@ -1120,18 +1298,25 @@ export async function updateInvoice(
     );
 
   if (!existing) {
+    /*
+     * IMPORTANT:
+     * Routes expect NOT_FOUND for
+     * organization-scoped missing invoices.
+     */
     throw new InvoiceError(
       'Invoice not found.',
-      'INVOICE_NOT_FOUND',
+      'NOT_FOUND',
       404,
     );
   }
 
   /*
-   * Validate customer ownership when customerId changes.
+   * Validate customer ownership
+   * when customerId changes.
    */
   if (
-    input.customerId !== undefined
+    input.customerId !==
+    undefined
   ) {
     const customerOk =
       await customerBelongsToOrg(
@@ -1149,24 +1334,27 @@ export async function updateInvoice(
   }
 
   /*
-   * Determine the items that should be used
-   * for financial recalculation.
+   * Determine items used for
+   * financial recalculation.
    */
   let items:
     | InvoiceItemInput[]
     | undefined;
 
   if (
-    input.items !== undefined
+    input.items !==
+    undefined
   ) {
     items =
       input.items;
   } else if (
-    (existing as any).items
-      ?.length
+    (existing as any)
+      .items?.length
   ) {
     items =
-      (existing as any).items.map(
+      (
+        existing as any
+      ).items.map(
         (item: any) => ({
           description:
             item.description,
@@ -1179,26 +1367,28 @@ export async function updateInvoice(
           unitPrice:
             Number(
               item.unitPrice ??
-              item.unit_price ??
-              0,
+                item.unit_price ??
+                0,
             ),
 
           taxRate:
             Number(
               item.taxRate ??
-              item.tax_rate ??
-              0,
+                item.tax_rate ??
+                0,
             ),
         }),
       );
   }
 
   const requestedDiscount =
-    input.discount !== undefined
+    input.discount !==
+    undefined
       ? input.discount
       : Number(
           (existing as any)
-            .discount ?? 0,
+            .discount ??
+            0,
         );
 
   const financials =
@@ -1214,23 +1404,26 @@ export async function updateInvoice(
     Number(
       (existing as any)
         .totalAmount ??
-      (existing as any)
-        .total_amount ??
-      0,
+        (existing as any)
+          .total_amount ??
+        0,
     );
 
   const currentAmountPaid =
-    input.amountPaid !== undefined
-      ? Number(input.amountPaid)
+    input.amountPaid !==
+    undefined
+      ? Number(
+          input.amountPaid,
+        )
       : Number(
           (existing as any)
             .amountPaid ??
-          (existing as any)
-            .amount_paid ??
-          0,
+            (existing as any)
+              .amount_paid ??
+            0,
         );
 
-  let requestedStatus =
+  const requestedStatus =
     input.status ??
     ((existing as any)
       .status as InvoiceStatus);
@@ -1239,11 +1432,12 @@ export async function updateInvoice(
     currentAmountPaid;
 
   /*
-   * Explicit paid status settles the
-   * entire invoice.
+   * Explicit paid status
+   * settles the invoice.
    */
   if (
-    requestedStatus === 'paid'
+    requestedStatus ===
+    'paid'
   ) {
     amountPaid =
       currentTotal;
@@ -1254,17 +1448,20 @@ export async function updateInvoice(
     String(
       (existing as any)
         .dueDate ??
-      (existing as any)
-        .due_date ??
-      '',
+        (existing as any)
+          .due_date ??
+        '',
     );
 
   const resolved =
     resolveStatus({
       requestedStatus,
+
       amountPaid,
+
       totalAmount:
         currentTotal,
+
       dueDate,
     });
 
@@ -1275,7 +1472,8 @@ export async function updateInvoice(
     > = {};
 
   if (
-    input.customerId !== undefined
+    input.customerId !==
+    undefined
   ) {
     updateData.customer_id =
       input.customerId;
@@ -1290,21 +1488,24 @@ export async function updateInvoice(
   }
 
   if (
-    input.issueDate !== undefined
+    input.issueDate !==
+    undefined
   ) {
     updateData.issue_date =
       input.issueDate;
   }
 
   if (
-    input.dueDate !== undefined
+    input.dueDate !==
+    undefined
   ) {
     updateData.due_date =
       input.dueDate;
   }
 
   if (
-    input.currency !== undefined
+    input.currency !==
+    undefined
   ) {
     updateData.currency =
       input.currency;
@@ -1323,7 +1524,8 @@ export async function updateInvoice(
     updateData.total_amount =
       financials.total;
   } else if (
-    input.discount !== undefined
+    input.discount !==
+    undefined
   ) {
     updateData.discount =
       roundMoney(
@@ -1331,30 +1533,19 @@ export async function updateInvoice(
       );
   }
 
+  /*
+   * Payment/status changes need
+   * amount fields recalculated.
+   */
   if (
     input.amountPaid !==
       undefined ||
     input.status !==
       undefined ||
-    financials
-  ) {
-    updateData.amount_paid =
-      resolved.amountPaid;
-
-    updateData.amount_due =
-      resolved.amountDue;
-
-    updateData.status =
-      resolved.status;
-  } else if (
+    financials ||
     input.dueDate !==
-    undefined
+      undefined
   ) {
-    /*
-     * Due date changed, so status may need
-     * to change to overdue even when no payment
-     * or items changed.
-     */
     updateData.amount_paid =
       resolved.amountPaid;
 
@@ -1366,7 +1557,8 @@ export async function updateInvoice(
   }
 
   if (
-    input.notes !== undefined
+    input.notes !==
+    undefined
   ) {
     updateData.notes =
       input.notes;
@@ -1381,7 +1573,8 @@ export async function updateInvoice(
   }
 
   const hasItemsUpdate =
-    input.items !== undefined;
+    input.items !==
+    undefined;
 
   /*
    * Empty update payload.
@@ -1398,23 +1591,28 @@ export async function updateInvoice(
   const {
     data,
     error,
-  } = await supabaseServer
-    .from('invoices')
-    .update(updateData)
-    .eq(
-      'organization_id',
-      organizationId,
-    )
-    .eq(
-      'id',
-      invoiceId,
-    )
-    .select('*')
-    .single();
+  } =
+    await supabaseServer
+      .from('invoices')
+      .update(
+        updateData,
+      )
+      .eq(
+        'organization_id',
+        organizationId,
+      )
+      .eq(
+        'id',
+        invoiceId,
+      )
+      .select('*')
+      .single();
 
   if (error) {
     if (
-      isUniqueViolation(error)
+      isUniqueViolation(
+        error,
+      )
     ) {
       throw new InvoiceError(
         'An invoice with this number already exists.',
@@ -1428,8 +1626,11 @@ export async function updateInvoice(
       {
         message:
           error.message,
+
         invoiceId,
+
         organizationId,
+
         error:
           error.message,
       },
@@ -1443,8 +1644,8 @@ export async function updateInvoice(
   }
 
   /*
-   * Replace invoice items when new items
-   * are supplied.
+   * Replace invoice items
+   * when supplied.
    */
   if (
     hasItemsUpdate &&
@@ -1453,13 +1654,16 @@ export async function updateInvoice(
     const {
       error:
         deleteItemsError,
-    } = await supabaseServer
-      .from('invoice_items')
-      .delete()
-      .eq(
-        'invoice_id',
-        invoiceId,
-      );
+    } =
+      await supabaseServer
+        .from(
+          'invoice_items',
+        )
+        .delete()
+        .eq(
+          'invoice_id',
+          invoiceId,
+        );
 
     if (
       deleteItemsError
@@ -1469,6 +1673,7 @@ export async function updateInvoice(
         {
           message:
             deleteItemsError.message,
+
           invoiceId,
         },
       );
@@ -1481,8 +1686,8 @@ export async function updateInvoice(
     }
 
     /*
-     * Insert all replacement items
-     * in ONE call.
+     * Calculate all item rows
+     * before inserting them.
      */
     const itemRows =
       input.items.map(
@@ -1511,18 +1716,30 @@ export async function updateInvoice(
             tax_amount:
               financials.taxAmount,
 
+            /*
+             * Line total is subtotal
+             * before tax.
+             */
             total:
               financials.total,
           };
         },
       );
 
+    /*
+     * Single bulk insert.
+     */
     const {
       error:
         itemError,
-    } = await supabaseServer
-      .from('invoice_items')
-      .insert(itemRows);
+    } =
+      await supabaseServer
+        .from(
+          'invoice_items',
+        )
+        .insert(
+          itemRows,
+        );
 
     if (itemError) {
       logger.error(
@@ -1530,6 +1747,7 @@ export async function updateInvoice(
         {
           message:
             itemError.message,
+
           invoiceId,
         },
       );
@@ -1543,8 +1761,8 @@ export async function updateInvoice(
   }
 
   /*
-   * Updating an invoice should NOT consume
-   * the "invoices_created" quota.
+   * Updating an invoice does NOT
+   * consume invoice creation quota.
    */
   const updated =
     await getInvoice(
@@ -1572,8 +1790,7 @@ export async function deleteInvoice(
   /*
    * Verify organization ownership first.
    *
-   * This prevents deleting an invoice belonging
-   * to another organization.
+   * This prevents IDOR deletion.
    */
   const existing =
     await getInvoice(
@@ -1582,26 +1799,31 @@ export async function deleteInvoice(
     );
 
   if (!existing) {
+    /*
+     * IMPORTANT:
+     * Routes/tests expect NOT_FOUND.
+     */
     throw new InvoiceError(
       'Invoice not found.',
-      'INVOICE_NOT_FOUND',
+      'NOT_FOUND',
       404,
     );
   }
 
   const {
     error,
-  } = await supabaseServer
-    .from('invoices')
-    .delete()
-    .eq(
-      'organization_id',
-      organizationId,
-    )
-    .eq(
-      'id',
-      invoiceId,
-    );
+  } =
+    await supabaseServer
+      .from('invoices')
+      .delete()
+      .eq(
+        'organization_id',
+        organizationId,
+      )
+      .eq(
+        'id',
+        invoiceId,
+      );
 
   if (error) {
     logger.error(
@@ -1609,7 +1831,9 @@ export async function deleteInvoice(
       {
         message:
           error.message,
+
         invoiceId,
+
         organizationId,
       },
     );
@@ -1622,8 +1846,8 @@ export async function deleteInvoice(
   }
 
   /*
-   * Deleting an invoice should NOT consume
-   * the invoice creation quota.
+   * Deleting an invoice does NOT
+   * consume invoice creation quota.
    */
 
   return existing;
@@ -1640,23 +1864,25 @@ export async function getInvoiceSummary(
     data: invoices,
     error,
     count,
-  } = await supabaseServer
-    .from('invoices')
-    .select(
-      `
-        total_amount,
-        amount_paid,
-        amount_due,
-        status
-      `,
-      {
-        count: 'exact',
-      },
-    )
-    .eq(
-      'organization_id',
-      organizationId,
-    );
+  } =
+    await supabaseServer
+      .from('invoices')
+      .select(
+        `
+          total_amount,
+          amount_paid,
+          amount_due,
+          status
+        `,
+        {
+          count:
+            'exact',
+        },
+      )
+      .eq(
+        'organization_id',
+        organizationId,
+      );
 
   if (error) {
     logger.error(
@@ -1664,6 +1890,7 @@ export async function getInvoiceSummary(
       {
         message:
           error.message,
+
         organizationId,
       },
     );
@@ -1676,12 +1903,20 @@ export async function getInvoiceSummary(
   }
 
   const invoiceArray =
-    (invoices ?? []) as Array<{
-      total_amount: number;
-      amount_paid: number;
-      amount_due: number;
-      status: InvoiceStatus;
-    }>;
+    (invoices ??
+      []) as Array<{
+        total_amount:
+          number;
+
+        amount_paid:
+          number;
+
+        amount_due:
+          number;
+
+        status:
+          InvoiceStatus;
+      }>;
 
   const totalInvoices =
     count ??
@@ -1750,9 +1985,13 @@ export async function getInvoiceSummary(
 
   return {
     totalInvoices,
+
     totalAmount,
+
     totalPaid,
+
     totalDue,
+
     pendingInvoices,
   };
 }
