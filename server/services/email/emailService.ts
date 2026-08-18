@@ -357,13 +357,14 @@ export async function sendPaymentPromiseReminder(
   }
 
   const email = buildPaymentPromiseReminderEmail({
-    customerName: ctx.customer.contactName,
-    businessName: ctx.businessName,
-    invoiceNumber: ctx.invoice.invoiceNumber,
-    amountDue: ctx.invoice.amountDue,
-    currency: ctx.invoice.currency,
-    dueDate: ctx.invoice.dueDate,
-  });
+  customerName: ctx.customer.contactName,
+  businessName: ctx.businessName,
+  invoiceNumber: ctx.invoice.invoiceNumber,
+  amountDue: ctx.invoice.amountDue,
+  currency: ctx.invoice.currency,
+  dueDate: ctx.invoice.dueDate,
+  promiseDate: input.promiseDate,
+});
 
   await sendWithRetry(
     input.organizationId,
