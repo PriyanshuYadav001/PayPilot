@@ -492,7 +492,7 @@ export const Invoices: React.FC = () => {
               Retry
             </button>
           </div>
-        ) : invoices.length === 0 ? (
+        ) : (invoices || []).length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-12 h-12 rounded-full bg-slate-700/50 flex items-center justify-center mx-auto mb-3 text-slate-400">
               <FileText className="w-6 h-6" />
@@ -518,7 +518,7 @@ export const Invoices: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-700/40">
-                {invoices.map((invoice) => (
+                {(invoices || []).map((invoice) => (
                   <tr key={invoice.id} className="hover:bg-slate-700/20">
                     <td className="px-4 py-3 font-medium text-slate-200">{invoice.invoiceNumber}</td>
                     <td className="px-4 py-3 text-slate-300">
