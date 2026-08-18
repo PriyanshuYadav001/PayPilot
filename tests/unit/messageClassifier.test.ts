@@ -2,12 +2,21 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ClassifiedOutputSchema } from '../../server/validators/ai';
 
 const mockClassifyMessage = vi.fn();
+const mockCheckAndRecordUsage = vi.fn();
+
 const ORG_ID = 'org-test-1';
 
 vi.mock('../../server/services/ai/AIProvider', () => ({
   getAIProvider: () => ({ classifyMessage: mockClassifyMessage, generateReminder: vi.fn() }),
   registerAIProvider: vi.fn(),
   clearAIProvider: vi.fn(),
+}));
+
+vi.mock('../../server/services/usageService', () => ({
+  checkAndRecordUsage: mockCheckAndRecordUsage,
+  Metric: {
+    ai_analyses: 'ai_analyses',
+  },
 }));
 
 // ─── Zod Schema Validation ─────────────────────────────────────────────────
@@ -131,8 +140,14 @@ describe('ClassifiedOutputSchema (Zod)', () => {
 
 describe('messageClassifier', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+  vi.clearAllMocks();
+
+  mockCheckAndRecordUsage.mockResolvedValue({
+    allowed: true,
+    remaining: 999,
+    limit: 1000,
   });
+});
 
   it('classifies a payment promise message', async () => {
     mockClassifyMessage.mockResolvedValue({
