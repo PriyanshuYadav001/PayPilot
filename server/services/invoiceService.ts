@@ -796,11 +796,12 @@ export async function listInvoices(
   }
 
   if (searchTerm?.trim()) {
-    query = query.ilike(
-      'invoice_number',
-      `%${searchTerm.trim()}%`,
-    );
-  }
+  const search = searchTerm.trim();
+
+  query = query.or(
+    `invoice_number.ilike.%${search}%`
+  );
+}
 
   const {
     data,
@@ -836,13 +837,12 @@ export async function listInvoices(
   const total = count ?? 0;
 
   return {
-    data: (data ?? []).map(mapInvoiceRow),
-    total,
-    page: safePage,
-    limit: safeLimit,
-    lastPage:
-      Math.ceil(total / safeLimit),
-  };
+  data: (data ?? []).map(mapInvoiceRow),
+  total,
+  page: safePage,
+  limit: safeLimit,
+  totalPages: Math.ceil(total / safeLimit),
+};
 }
 
 /* =========================================================
