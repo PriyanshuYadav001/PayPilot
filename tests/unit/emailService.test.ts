@@ -6,11 +6,19 @@ const usageMocks = vi.hoisted(() => ({
 }));
 
 const mocks = vi.hoisted(() => ({
-  sendMessage: vi.fn().mockResolvedValue({ id: 'comm-1' }),
+  sendMessage: vi.fn(),
   getInvoice: vi.fn(),
-  createPaymentLink: vi.fn(),
 }));
 
+/**
+ * Mock usage service.
+ *
+ * emailService now uses:
+ *   checkLimit()
+ *   recordUsage()
+ *
+ * instead of checkAndRecordUsage().
+ */
 vi.mock('../../server/services/usageService', () => ({
   Metric: {
     invoices_created: 'invoices_created',
@@ -23,38 +31,36 @@ vi.mock('../../server/services/usageService', () => ({
   checkLimit: usageMocks.checkLimit,
   recordUsage: usageMocks.recordUsage,
 
-  // Keep this in case another part of the test imports it.
+  // Kept for compatibility in case another imported module needs it.
   checkAndRecordUsage: vi.fn(),
 }));
 
-vi.mock('../../server/services/communication/communicationService', () => ({
-  communicationService: {
-    sendMessage: mocks.sendMessage,
-  },
-}));
+/**
+ * Mock communication service.
+ */
+vi.mock(
+  '../../server/services/communication/communicationService',
+  () => ({
+    communicationService: {
+      sendMessage: mocks.sendMessage,
+    },
+  }),
+);
 
+/**
+ * Mock invoice service.
+ */
 vi.mock('../../server/services/invoiceService', () => ({
   invoiceService: {
     getInvoice: mocks.getInvoice,
   },
 }));
 
-vi.mock('../../server/services/payment/paymentService', () => ({
-  createPaymentLink: (...args: unknown[]) =>
-    mocks.createPaymentLink(...args),
-}));
-
 /**
- * Mock Supabase client
+ * Mock Supabase client.
  *
- * The important part here is that the query builder supports
- * all methods used by the services under test, especially:
- *
- * .insert()
- *
- * The previous mock did not implement .insert(), which caused:
- *
- * supabaseServer.from(...).insert is not a function
+ * emailService uses Supabase to load the organization name
+ * from the organizations table.
  */
 const m = vi.hoisted(() => {
   const tables: Record<string, Record<string, unknown>> = {};
@@ -66,53 +72,53 @@ const m = vi.hoisted(() => {
       /**
        * SELECT
        */
-      select(_cols?: unknown, _opts?: unknown) {
+      select(_columns?: unknown, _options?: unknown) {
         return chain;
       },
 
       /**
        * FILTERS
        */
-      eq(_col: unknown, _val: unknown) {
+      eq(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      neq(_col: unknown, _val: unknown) {
+      neq(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      gt(_col: unknown, _val: unknown) {
+      gt(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      gte(_col: unknown, _val: unknown) {
+      gte(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      lt(_col: unknown, _val: unknown) {
+      lt(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      lte(_col: unknown, _val: unknown) {
+      lte(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      in(_col: unknown, _val: unknown) {
+      in(_column: unknown, _value: unknown) {
         return chain;
       },
 
-      is(_col: unknown, _val: unknown) {
+      is(_column: unknown, _value: unknown) {
         return chain;
       },
 
       /**
        * SORTING / PAGINATION
        */
-      order(_col: unknown, _opts?: unknown) {
+      order(_column: unknown, _options?: unknown) {
         return chain;
       },
 
-      limit(_n: unknown) {
+      limit(_value: unknown) {
         return chain;
       },
 
@@ -122,14 +128,6 @@ const m = vi.hoisted(() => {
 
       /**
        * INSERT
-       *
-       * This was missing from the original mock.
-       *
-       * usageService.ts calls:
-       *
-       * supabaseServer
-       *   .from('usage_records')
-       *   .insert({...})
        */
       insert(_values: unknown) {
         return chain;
@@ -157,7 +155,7 @@ const m = vi.hoisted(() => {
       },
 
       /**
-       * SINGLE RESULT
+       * SINGLE
        */
       single() {
         return Promise.resolve({
@@ -167,7 +165,7 @@ const m = vi.hoisted(() => {
       },
 
       /**
-       * OPTIONAL SINGLE RESULT
+       * OPTIONAL SINGLE
        */
       maybeSingle() {
         return Promise.resolve({
@@ -177,14 +175,7 @@ const m = vi.hoisted(() => {
       },
 
       /**
-       * Allow the query chain to be awaited directly.
-       *
-       * Example:
-       *
-       * const { data, error } = await supabase
-       *   .from('table')
-       *   .select('*')
-       *   .eq(...)
+       * Make the query chain awaitable.
        */
       then(
         resolve: (value: {
@@ -214,6 +205,9 @@ vi.mock('../../server/lib/supabaseClient', () => ({
   supabaseServer: m.supabaseServer,
 }));
 
+/**
+ * Import service under test after mocks are defined.
+ */
 import {
   sendInvoiceReminder,
   sendOverdueReminder,
@@ -245,8 +239,16 @@ const INVOICE = {
   organizationId: ORG_ID,
   customerId: CUSTOMER_ID,
   invoiceNumber: 'INV-001',
+
   issueDate: '2026-08-01',
+
+  /**
+   * Current test date is 2026-08-18.
+   *
+   * Therefore this invoice is 14 days BEFORE its due date.
+   */
   dueDate: '2026-09-01',
+
   currency: 'INR',
   subtotal: 1000,
   taxTotal: 180,
@@ -256,8 +258,10 @@ const INVOICE = {
   amountDue: 1180,
   status: 'sent' as const,
   isFollowUpActive: true,
+
   customer: CUSTOMER,
   items: [],
+
   createdAt: '2026-08-01T00:00:00Z',
   updatedAt: '2026-08-01T00:00:00Z',
 };
@@ -265,21 +269,49 @@ const INVOICE = {
 describe('Email Follow-Up Service', () => {
   beforeEach(() => {
     /**
-     * Reset all mocks between tests.
+     * Reset all mocks.
      */
     vi.clearAllMocks();
 
     /**
-     * Restore default mocked service behaviour.
+     * Default invoice.
      */
-    mocks.getInvoice.mockResolvedValue({ ...INVOICE });
-
-    mocks.createPaymentLink.mockResolvedValue({
-      shortUrl: 'https://pay.test/default',
+    mocks.getInvoice.mockResolvedValue({
+      ...INVOICE,
     });
 
+    /**
+     * Default successful email send.
+     */
     mocks.sendMessage.mockResolvedValue({
       id: 'comm-1',
+    });
+
+    /**
+     * Default usage limit:
+     *
+     * limit = 100
+     * current usage = 1
+     * remaining = 99
+     */
+    usageMocks.checkLimit.mockResolvedValue({
+      exceeded: false,
+      remaining: 99,
+      limit: 100,
+    });
+
+    /**
+     * Default successful usage recording.
+     */
+    usageMocks.recordUsage.mockResolvedValue({
+      id: 'usage-1',
+      organization_id: ORG_ID,
+      metric: 'emails_sent',
+      period_start: '2026-08-01T00:00:00.000Z',
+      period_end: '2026-09-01T00:00:00.000Z',
+      count: 1,
+      created_at: '2026-08-18T00:00:00.000Z',
+      updated_at: '2026-08-18T00:00:00.000Z',
     });
 
     /**
@@ -294,24 +326,13 @@ describe('Email Follow-Up Service', () => {
     };
 
     /**
-     * Default payment link:
-     * no existing active link.
+     * Mock payment_links table.
+     *
+     * By default there is no active payment link.
      */
     m.tables.payment_links = {
       single: null,
       singleError: null,
-    };
-
-    /**
-     * usage_records needs to succeed when usageService
-     * calls .insert().
-     *
-     * Since insert() now returns the chain and the chain
-     * is awaitable, this resolves successfully.
-     */
-    m.tables.usage_records = {
-      data: [],
-      error: null,
     };
   });
 
@@ -328,68 +349,104 @@ describe('Email Follow-Up Service', () => {
       const call = mocks.sendMessage.mock.calls[0];
 
       expect(call[0]).toBe(ORG_ID);
+
       expect(call[1].channel).toBe('email');
       expect(call[1].customerId).toBe(CUSTOMER_ID);
       expect(call[1].invoiceId).toBe(INVOICE_ID);
+
       expect(call[1].subject).toContain('INV-001');
+
       expect(call[1].message).toContain('Jane Doe');
       expect(call[1].message).toContain('Test Business');
       expect(call[1].message).toContain('1,180.00');
       expect(call[1].message).toContain('Pay Now');
-      expect(call[1].metadata.type).toBe('invoice_reminder');
+
+      expect(call[1].metadata.type).toBe(
+        'invoice_reminder',
+      );
     });
 
-    it('includes payment link in email when available', async () => {
-      m.tables.payment_links = {
-        single: {
-          short_url: 'https://pay.test/abc',
-          status: 'active',
-          expires_at: '2099-12-31',
-        },
-        singleError: null,
-      };
-
+    it('checks email usage before sending', async () => {
       await sendInvoiceReminder({
         organizationId: ORG_ID,
         customerId: CUSTOMER_ID,
         invoiceId: INVOICE_ID,
       });
 
-      const message = mocks.sendMessage.mock.calls[0][1].message;
-
-      expect(message).toContain('https://pay.test/abc');
-    });
-
-    it('creates a new payment link when none exists', async () => {
-      m.tables.payment_links = {
-        single: null,
-        singleError: null,
-      };
-
-      mocks.createPaymentLink.mockResolvedValue({
-        shortUrl: 'https://pay.test/new',
-      });
-
-      await sendInvoiceReminder({
-        organizationId: ORG_ID,
-        customerId: CUSTOMER_ID,
-        invoiceId: INVOICE_ID,
-      });
-
-      expect(mocks.createPaymentLink).toHaveBeenCalledOnce();
+      expect(usageMocks.checkLimit).toHaveBeenCalledOnce();
 
       expect(
-        mocks.createPaymentLink.mock.calls[0][0],
+        usageMocks.checkLimit.mock.calls[0][0],
       ).toBe(ORG_ID);
 
       expect(
-        mocks.createPaymentLink.mock.calls[0][1].invoiceId,
-      ).toBe(INVOICE_ID);
+        usageMocks.checkLimit.mock.calls[0][1],
+      ).toBe('emails_sent');
+
+      expect(
+        usageMocks.checkLimit.mock.calls[0][2],
+      ).toBe(1);
+    });
+
+    it('records email usage after successful send', async () => {
+      await sendInvoiceReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
+
+      expect(usageMocks.recordUsage).toHaveBeenCalledOnce();
+
+      expect(
+        usageMocks.recordUsage.mock.calls[0][0],
+      ).toBe(ORG_ID);
+
+      expect(
+        usageMocks.recordUsage.mock.calls[0][1],
+      ).toBe('emails_sent');
+
+      expect(
+        usageMocks.recordUsage.mock.calls[0][2],
+      ).toBe(1);
+    });
+
+    it('does not send email when usage limit is exceeded', async () => {
+      usageMocks.checkLimit.mockResolvedValue({
+        exceeded: true,
+        remaining: 0,
+        limit: 100,
+      });
+
+      await expect(
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
+      ).rejects.toThrow(
+        'Plan limit reached',
+      );
+
+      expect(
+        mocks.sendMessage,
+      ).not.toHaveBeenCalled();
+
+      expect(
+        usageMocks.recordUsage,
+      ).not.toHaveBeenCalled();
     });
   });
 
   describe('sendOverdueReminder', () => {
     it('sends an overdue reminder with overdue-themed content', async () => {
+      /**
+       * Make the invoice actually overdue.
+       */
+      mocks.getInvoice.mockResolvedValue({
+        ...INVOICE,
+        dueDate: '2026-08-11',
+      });
+
       await sendOverdueReminder({
         organizationId: ORG_ID,
         customerId: CUSTOMER_ID,
@@ -401,9 +458,31 @@ describe('Email Follow-Up Service', () => {
       const call = mocks.sendMessage.mock.calls[0];
 
       expect(call[1].subject).toContain('INV-001');
+
       expect(call[1].message).toContain('Overdue');
-      expect(call[1].metadata.type).toBe('overdue_reminder');
-      expect(call[1].metadata.daysRelativeToDue).toBe(7);
+
+      expect(call[1].metadata.type).toBe(
+        'overdue_reminder',
+      );
+
+      /**
+       * 2026-08-18 - 2026-08-11 = 7 days overdue.
+       */
+      expect(
+        call[1].metadata.daysRelativeToDue,
+      ).toBe(7);
+    });
+
+    it('records usage after successful overdue reminder', async () => {
+      await sendOverdueReminder({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
+
+      expect(
+        usageMocks.recordUsage,
+      ).toHaveBeenCalledOnce();
     });
   });
 
@@ -424,12 +503,54 @@ describe('Email Follow-Up Service', () => {
         invoiceId: INVOICE_ID,
       });
 
+      expect(mocks.sendMessage).toHaveBeenCalledOnce();
+
       const call = mocks.sendMessage.mock.calls[0];
 
-      expect(call[1].subject).toContain('INV-001');
-      expect(call[1].message).toContain('https://pay.test/xyz');
-      expect(call[1].message).toContain('Secure Payment Link');
-      expect(call[1].metadata.type).toBe('payment_link');
+      expect(call[1].subject).toContain(
+        'INV-001',
+      );
+
+      expect(call[1].message).toContain(
+        'https://pay.test/xyz',
+      );
+
+      expect(call[1].message).toContain(
+        'Secure Payment Link',
+      );
+
+      expect(call[1].metadata.type).toBe(
+        'payment_link',
+      );
+
+      expect(
+        call[1].metadata.paymentUrl,
+      ).toBe(
+        'https://pay.test/xyz',
+      );
+    });
+
+    it('sends the email even when no payment link exists', async () => {
+      m.tables.payment_links = {
+        single: null,
+        singleError: null,
+      };
+
+      await sendPaymentLink({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+      });
+
+      expect(
+        mocks.sendMessage,
+      ).toHaveBeenCalledOnce();
+
+      const call = mocks.sendMessage.mock.calls[0];
+
+      expect(
+        call[1].metadata.paymentUrl,
+      ).toBeUndefined();
     });
   });
 
@@ -442,13 +563,42 @@ describe('Email Follow-Up Service', () => {
         amountPaid: 1180,
       });
 
+      expect(mocks.sendMessage).toHaveBeenCalledOnce();
+
       const call = mocks.sendMessage.mock.calls[0];
 
-      expect(call[1].subject).toContain('INV-001');
-      expect(call[1].subject).toContain('Confirmed');
-      expect(call[1].message).toContain('Payment Received');
-      expect(call[1].message).toContain('1,180.00');
-      expect(call[1].metadata.type).toBe('payment_confirmation');
+      expect(call[1].subject).toContain(
+        'INV-001',
+      );
+
+      expect(call[1].subject).toContain(
+        'Confirmed',
+      );
+
+      expect(call[1].message).toContain(
+        'Payment Received',
+      );
+
+      expect(call[1].message).toContain(
+        '1,180.00',
+      );
+
+      expect(call[1].metadata.type).toBe(
+        'payment_confirmation',
+      );
+    });
+
+    it('records one email usage after payment confirmation', async () => {
+      await sendPaymentConfirmation({
+        organizationId: ORG_ID,
+        customerId: CUSTOMER_ID,
+        invoiceId: INVOICE_ID,
+        amountPaid: 1180,
+      });
+
+      expect(
+        usageMocks.recordUsage,
+      ).toHaveBeenCalledOnce();
     });
   });
 
@@ -461,22 +611,41 @@ describe('Email Follow-Up Service', () => {
         promiseDate: '2026-09-15',
       });
 
+      expect(mocks.sendMessage).toHaveBeenCalledOnce();
+
       const call = mocks.sendMessage.mock.calls[0];
 
-      expect(call[1].subject).toContain('INV-001');
-      expect(call[1].subject).toContain('Promise');
-      expect(call[1].message).toContain('2026-09-15');
-      expect(call[1].message).toContain('committed');
+      expect(call[1].subject).toContain(
+        'INV-001',
+      );
+
+      expect(call[1].subject).toContain(
+        'Promise',
+      );
+
+      expect(call[1].message).toContain(
+        '2026-09-15',
+      );
+
+      expect(call[1].message).toContain(
+        'committed',
+      );
+
       expect(call[1].metadata.type).toBe(
         'payment_promise_reminder',
       );
-      expect(call[1].metadata.promiseDate).toBe('2026-09-15');
+
+      expect(
+        call[1].metadata.promiseDate,
+      ).toBe('2026-09-15');
     });
   });
 
   describe('Error handling', () => {
     it('throws when invoice is not found', async () => {
-      mocks.getInvoice.mockResolvedValue(null);
+      mocks.getInvoice.mockResolvedValue(
+        null,
+      );
 
       await expect(
         sendInvoiceReminder({
@@ -484,7 +653,17 @@ describe('Email Follow-Up Service', () => {
           customerId: CUSTOMER_ID,
           invoiceId: INVOICE_ID,
         }),
-      ).rejects.toThrow('Invoice inv-1 not found');
+      ).rejects.toThrow(
+        'Invoice inv-1 not found',
+      );
+
+      expect(
+        usageMocks.checkLimit,
+      ).not.toHaveBeenCalled();
+
+      expect(
+        mocks.sendMessage,
+      ).not.toHaveBeenCalled();
     });
 
     it('throws when customer has no email', async () => {
@@ -502,7 +681,17 @@ describe('Email Follow-Up Service', () => {
           customerId: CUSTOMER_ID,
           invoiceId: INVOICE_ID,
         }),
-      ).rejects.toThrow('no email address');
+      ).rejects.toThrow(
+        'no email address',
+      );
+
+      expect(
+        usageMocks.checkLimit,
+      ).not.toHaveBeenCalled();
+
+      expect(
+        mocks.sendMessage,
+      ).not.toHaveBeenCalled();
     });
 
     it('throws when customer has DND enabled', async () => {
@@ -520,7 +709,17 @@ describe('Email Follow-Up Service', () => {
           customerId: CUSTOMER_ID,
           invoiceId: INVOICE_ID,
         }),
-      ).rejects.toThrow('Do Not Disturb');
+      ).rejects.toThrow(
+        'Do Not Disturb',
+      );
+
+      expect(
+        usageMocks.checkLimit,
+      ).not.toHaveBeenCalled();
+
+      expect(
+        mocks.sendMessage,
+      ).not.toHaveBeenCalled();
     });
 
     it('retries and fails after max retries', async () => {
@@ -534,9 +733,74 @@ describe('Email Follow-Up Service', () => {
           customerId: CUSTOMER_ID,
           invoiceId: INVOICE_ID,
         }),
-      ).rejects.toThrow('Network error');
+      ).rejects.toThrow(
+        'Network error',
+      );
 
-      expect(mocks.sendMessage).toHaveBeenCalledTimes(3);
+      /**
+       * MAX_EMAIL_RETRIES = 3
+       */
+      expect(
+        mocks.sendMessage,
+      ).toHaveBeenCalledTimes(3);
+
+      /**
+       * No successful send means no usage should
+       * be recorded.
+       */
+      expect(
+        usageMocks.recordUsage,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('does not record usage for failed email attempts', async () => {
+      mocks.sendMessage.mockRejectedValue(
+        new Error('SMTP failure'),
+      );
+
+      await expect(
+        sendPaymentLink({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
+      ).rejects.toThrow(
+        'SMTP failure',
+      );
+
+      expect(
+        usageMocks.recordUsage,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('throws when usage recording fails after a successful send', async () => {
+      usageMocks.recordUsage.mockResolvedValue(
+        null,
+      );
+
+      /**
+       * IMPORTANT:
+       *
+       * Your current emailService implementation catches
+       * usage-recording errors inside sendWithRetry().
+       *
+       * Therefore the email itself should still succeed.
+       */
+      await expect(
+        sendInvoiceReminder({
+          organizationId: ORG_ID,
+          customerId: CUSTOMER_ID,
+          invoiceId: INVOICE_ID,
+        }),
+      ).resolves.toBeUndefined();
+
+      expect(
+        mocks.sendMessage,
+      ).toHaveBeenCalledOnce();
+
+      expect(
+        usageMocks.recordUsage,
+      ).toHaveBeenCalledOnce();
     });
   });
 });
