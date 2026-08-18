@@ -23,18 +23,90 @@ const m = vi.hoisted(() => {
 
   const from = vi.fn((table: string) => {
     const cfg = tables[table] ?? {};
+
     const chain = {
-      select(_cols?: unknown, _opts?: unknown) { return chain; },
-      eq(_col: unknown, _val: unknown) { return chain; },
-      order(_col: unknown, _opts?: unknown) { return chain; },
-      limit(_n: unknown) { return chain; },
-      single() { return Promise.resolve({ data: cfg.single ?? null, error: cfg.singleError ?? null }); },
-      maybeSingle() { return Promise.resolve({ data: cfg.single ?? null, error: cfg.singleError ?? null }); },
+      select(_cols?: unknown, _opts?: unknown) {
+        return chain;
+      },
+
+      eq(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      neq(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      gt(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      gte(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      lt(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      lte(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      in(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      is(_col: unknown, _val: unknown) {
+        return chain;
+      },
+
+      order(_col: unknown, _opts?: unknown) {
+        return chain;
+      },
+
+      limit(_n: unknown) {
+        return chain;
+      },
+
+      range(_from: unknown, _to: unknown) {
+        return chain;
+      },
+
+      single() {
+        return Promise.resolve({
+          data: cfg.single ?? null,
+          error: cfg.singleError ?? null,
+        });
+      },
+
+      maybeSingle() {
+        return Promise.resolve({
+          data: cfg.single ?? null,
+          error: cfg.singleError ?? null,
+        });
+      },
+
+      then(
+        resolve: (value: {
+          data: unknown;
+          error: unknown;
+        }) => unknown,
+      ) {
+        return Promise.resolve({
+          data: cfg.data ?? [],
+          error: cfg.error ?? null,
+        }).then(resolve);
+      },
     };
+
     return chain;
   });
 
-  return { supabaseServer: { from }, tables };
+  return {
+    supabaseServer: { from },
+    tables,
+  };
 });
 
 vi.mock('../../server/lib/supabaseClient', () => ({ supabaseServer: m.supabaseServer }));
