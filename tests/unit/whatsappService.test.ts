@@ -212,7 +212,6 @@ mockSupabaseFrom.mockImplementation((table: string) => {
         organizationId: TEST_ORG,
         customerId: TEST_CUST,
         invoiceId: TEST_INV,
-        promiseDate: '2026-08-20',
       });
 
       expect(mockSendMessage).toHaveBeenCalledOnce();
