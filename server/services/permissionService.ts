@@ -72,7 +72,7 @@ export function requirePermission(permission: string) {
         return sendError(
           res,
           `Insufficient permissions. Required: ${permission}`,
-          'INSUFFICIENT_PERMISSIONS',
+          'FORBIDDEN',
           403,
         );
       }

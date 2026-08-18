@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
 import { invoiceService } from '../services/invoiceService';
+import { customerService, CustomerError } from '../services/customerService';
 import { validateBody, validateParams } from '../middleware/validate';
 import { customerCreateSchema, customerUpdateSchema, customerIdParamSchema } from '../validators/customer';
 import { sendSuccess, sendError } from '../utils/response';
@@ -20,17 +21,65 @@ customerRouter.get(
   '/',
   requirePermission('customers.read'),
   async (req: Request, res: Response) => {
+    const { organizationId } = req.tenant!;
+
     try {
-      const { organizationId } = req.tenant!;
-      // In a real implementation, we'd query the customers table
-      // For now, return empty with pagination
-      sendSuccess(res, { customers: [], total: 0 });
+      const page = Math.max(Number(req.query.page) || 1, 1);
+      const limit = Math.min(
+        Math.max(Number(req.query.limit) || 20, 1),
+        100
+      );
+
+      const result = await customerService.listCustomers(organizationId, {
+        page,
+        limit,
+        search: typeof req.query.search === 'string'
+          ? req.query.search
+          : undefined,
+        isDnd:
+          req.query.isDnd === 'true' || req.query.isDnd === 'false'
+            ? req.query.isDnd
+            : undefined,
+        sortBy:
+          typeof req.query.sortBy === 'string'
+            ? req.query.sortBy
+            : undefined,
+        sortOrder:
+          req.query.sortOrder === 'asc' || req.query.sortOrder === 'desc'
+            ? req.query.sortOrder
+            : undefined,
+      });
+
+      sendSuccess(res, {
+        customers: result.customers,
+        pagination: {
+          page: result.page,
+          limit: result.limit,
+          totalCount: result.totalCount,
+          totalPages: result.totalPages,
+        },
+      });
     } catch (err) {
+      if (err instanceof CustomerError) {
+        return sendError(
+          res,
+          err.message,
+          err.code,
+          err.statusCode
+        );
+      }
+
       logger.error('Failed to list customers', {
         error: err instanceof Error ? err.message : String(err),
-        organizationId: req.tenant!.organizationId,
+        organizationId,
       });
-      sendError(res, 'Failed to list customers.', 'LIST_CUSTOMERS_FAILED', 500);
+
+      return sendError(
+        res,
+        'Failed to list customers.',
+        'LIST_CUSTOMERS_FAILED',
+        500
+      );
     }
   }
 );
