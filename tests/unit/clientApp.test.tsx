@@ -151,27 +151,18 @@ const m = vi.hoisted(() => {
     }
 
     if (endpoint.startsWith('/invoices')) {
-      return {
-        success: true,
-
-        // Keep the nested response expected by the API contract.
-        data: {
-          invoices: [],
-        },
-
-        // Also expose invoices at the top level.
-        // This makes the test mock compatible with clients
-        // that read response.invoices directly.
-        invoices: [],
-
-        pagination: {
-          page: 1,
-          limit: 10,
-          totalCount: 0,
-          totalPages: 0,
-        },
-      };
-    }
+  return {
+    success: true,
+    data: {
+      invoices: {
+        data: [],
+        total: 0,
+        page: 1,
+        lastPage: 0,
+      },
+    },
+  };
+}
 
     return {
       success: true,

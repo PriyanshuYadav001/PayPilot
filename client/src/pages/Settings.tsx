@@ -1,48 +1,78 @@
 import React, { useEffect, useState } from 'react';
 import { Shield, Building, CreditCard, Phone, Mail, MessageCircle, Zap, Folder, MapPin, Clock } from 'lucide-react';
 import { PLAN_LIMITS } from '@shared/constants';
+import { useAuth } from '../hooks/useAuth';
+import { useOrganization } from '../hooks/useOrganization';
+import { apiRequest } from '../lib/apiClient';
 
 export const Settings: React.FC = () => {
-  const [organization, setOrganization] = useState<any>(null);
+  const { session } = useAuth();
+const { currentOrg } = useOrganization();
+
+const [organization, setOrganization] = useState<any>(null);
+
+const orgId = currentOrg?.id;
+const token = session?.access_token;
   const [loading, setLoading] = useState(true);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
-    async function fetchOrganization() {
-      const organizationId = 'org-demo-123';
-
-      try {
-        const res = await fetch('/api/settings', {
-          credentials: 'include' as RequestCredentials,
-        });
-        const data = await res.json();
-
-        if (!data || !data.organization) {
-          setOrganization({
-            name: 'Default Organization',
-            supportEmail: 'support@paypilot.com',
-            supportPhone: '+91-98765 43210',
-            currency: 'INR',
-            timezone: 'Asia/Kolkata',
-            billingAddress: { street: '', city: '', state: '', postalCode: '', country: 'India' },
-          });
-          setLoading(false);
-          return;
-        }
-
-        setOrganization(data.organization);
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching settings', err);
-        setLoading(false);
-      }
+  async function fetchOrganization() {
+    if (!orgId || !token) {
+      setLoading(false);
+      return;
     }
 
-    fetchOrganization();
-    return;
-  }, []);
+    try {
+      const response = await apiRequest<{ organization: any }>('/settings', {
+        orgId,
+        token,
+      });
+
+      if (!response.success || !response.data?.organization) {
+        setOrganization({
+          name: currentOrg?.name || 'Default Organization',
+          supportEmail: 'support@paypilot.com',
+          supportPhone: '+91-98765 43210',
+          currency: currentOrg?.currency || 'INR',
+          timezone: currentOrg?.timezone || 'Asia/Kolkata',
+          billingAddress: {
+            street: '',
+            city: '',
+            state: '',
+            postalCode: '',
+            country: 'India',
+          },
+        });
+      } else {
+        setOrganization(response.data.organization);
+      }
+    } catch (err) {
+      console.error('Error fetching settings', err);
+
+      setOrganization({
+        name: currentOrg?.name || 'Default Organization',
+        supportEmail: 'support@paypilot.com',
+        supportPhone: '+91-98765 43210',
+        currency: currentOrg?.currency || 'INR',
+        timezone: currentOrg?.timezone || 'Asia/Kolkata',
+        billingAddress: {
+          street: '',
+          city: '',
+          state: '',
+          postalCode: '',
+          country: 'India',
+        },
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  void fetchOrganization();
+}, [orgId, token, currentOrg]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -157,7 +187,6 @@ export const Settings: React.FC = () => {
               <label className="text-xs text-slate-400 block mb-1">Organization Name</label>
               <input
                 type="text"
-                defaultValue={organization.name || ''}
                 onChange={(e) => handleInputChange(e, 'name')}
                 value={organization.name || ''}
                 className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-300 text-sm placeholder-slate-500 transition-colors focus:border-emerald-500/50 focus:bg-slate-950/80"
@@ -172,7 +201,6 @@ export const Settings: React.FC = () => {
               <label className="text-xs text-slate-400 block mb-1">Support Email</label>
               <input
                 type="email"
-                defaultValue={organization.supportEmail || ''}
                 onChange={(e) => handleInputChange(e, 'supportEmail')}
                 value={organization.supportEmail || ''}
                 className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-300 text-sm placeholder-slate-500 transition-colors focus:border-emerald-500/50 focus:bg-slate-950/80"
@@ -187,7 +215,6 @@ export const Settings: React.FC = () => {
               <label className="text-xs text-slate-400 block mb-1">Support Phone</label>
               <input
                 type="tel"
-                defaultValue={organization.supportPhone || ''}
                 onChange={(e) => handleInputChange(e, 'supportPhone')}
                 value={organization.supportPhone || ''}
                 className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-300 text-sm placeholder-slate-500 transition-colors focus:border-emerald-500/50 focus:bg-slate-950/80"
@@ -202,7 +229,6 @@ export const Settings: React.FC = () => {
               <label className="text-xs text-slate-400 block mb-1">Currency</label>
               <input
                 type="text"
-                defaultValue={organization.currency || 'INR'}
                 onChange={(e) => handleInputChange(e, 'currency')}
                 value={organization.currency || 'INR'}
                 className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-300 text-sm placeholder-slate-500 transition-colors focus:border-emerald-500/50 focus:bg-slate-950/80"
@@ -217,7 +243,6 @@ export const Settings: React.FC = () => {
               <label className="text-xs text-slate-400 block mb-1">Timezone</label>
               <input
                 type="text"
-                defaultValue={organization.timezone || 'Asia/Kolkata'}
                 onChange={(e) => handleInputChange(e, 'timezone')}
                 value={organization.timezone || 'Asia/Kolkata'}
                 className="w-full px-3 py-2 bg-slate-900/60 border border-slate-700 rounded-lg text-slate-300 text-sm placeholder-slate-500 transition-colors focus:border-emerald-500/50 focus:bg-slate-950/80"
