@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
-import { validateBody, validateQuery, validateParams } from '../middleware/validate';
+import {
+  validateBody,
+  validateQuery,
+  validateParams,
+} from '../middleware/validate';
 import {
   followUpRuleCreateSchema,
   followUpRuleUpdateSchema,
@@ -33,7 +37,13 @@ followUpRuleRouter.get(
         req.query as any,
       );
 
-      sendSuccess(res, { rules });
+      sendSuccess(res, {
+        rules: rules.rules,
+        totalCount: rules.totalCount,
+        page: rules.page,
+        limit: rules.limit,
+        totalPages: rules.totalPages,
+      });
     } catch (err) {
       logger.error('Failed to list follow-up rules', {
         error: err instanceof Error ? err.message : String(err),
@@ -75,13 +85,7 @@ followUpRuleRouter.get(
         );
       }
 
-      sendSuccess(res, {
-  rules: rules.rules,
-  totalCount: rules.totalCount,
-  page: rules.page,
-  limit: rules.limit,
-  totalPages: rules.totalPages,
-});
+      sendSuccess(res, { rule });
     } catch (err) {
       logger.error('Failed to get follow-up rule', {
         error: err instanceof Error ? err.message : String(err),
