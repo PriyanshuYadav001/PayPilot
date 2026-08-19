@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { AuthLayout } from './AuthLayout';
 import { FormAlert } from './FormAlert';
+import { EyeOffIcon, EyeIcon } from 'lucide-react';
 import type { AuthView } from './AuthGate';
 
 interface LoginPageProps {
@@ -12,6 +13,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitch }) => {
   const { signIn, error, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -22,6 +24,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitch }) => {
     setSubmitting(false);
   };
 
+  const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
+
   return (
     <AuthLayout
       title="Sign in to PayPilot"
@@ -31,7 +35,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitch }) => {
           Don&apos;t have an account?{' '}
           <button
             onClick={() => onSwitch('signup')}
-            className="font-semibold text-emerald-400 hover:text-emerald-300"
+            className="font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
           >
             Create one
           </button>
@@ -42,56 +46,78 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitch }) => {
         {error && <FormAlert>{error}</FormAlert>}
 
         <div>
-          <label htmlFor="login-email" className="block text-xs font-medium text-slate-400 mb-1.5">
+          <label htmlFor="login-email" className="block text-sm font-medium text-slate-400 mb-2">
             Email address
           </label>
-          <input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              clearError();
-            }}
-            placeholder="you@company.com"
-            className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-          />
+          <div className="relative">
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearError();
+              }}
+              placeholder="you@company.com"
+              className="w-full px-4 py-3 bg-slate-950/60 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder-slate-500 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            />
+          </div>
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label htmlFor="login-password" className="block text-xs font-medium text-slate-400">
+          <div className="relative">
+            <label htmlFor="login-password" className="absolute text-xs font-medium text-slate-400 pointer-events-none select-none top-3 -left-4 text-sm">
               Password
             </label>
+            <input
+              id="login-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearError();
+              }}
+              placeholder={showPassword ? '' : '••••••••'}
+              className="w-full px-4 py-3 bg-slate-950/60 border border-slate-700 rounded-xl text-sm text-slate-200 placeholder-slate-500 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+            />
             <button
               type="button"
-              onClick={() => onSwitch('forgot')}
-              className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
+              onClick={togglePasswordVisibility}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-400 hover:text-emerald-300 transition-colors text-sm"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              Forgot password?
+              {showPassword ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
             </button>
           </div>
-          <input
-            id="login-password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
-              clearError();
-            }}
-            placeholder="••••••••"
-            className="w-full px-3 py-2 bg-slate-950/60 border border-slate-700 rounded-lg text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-          />
+          {showPassword ? (
+            <button
+              type="button"
+              onClick={togglePasswordVisibility}
+              className="mt-2 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+              aria-label="Hide password"
+            >
+              Hide
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={togglePasswordVisibility}
+              className="mt-2 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+              aria-label="Show password"
+            >
+              Show
+            </button>
+          )}
         </div>
 
         <button
           type="submit"
           disabled={submitting}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+          className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium transition-colors shadow-lg hover:shadow-xl"
         >
           {submitting ? 'Signing in...' : 'Sign in'}
         </button>
