@@ -1,40 +1,42 @@
 import React from 'react';
 
-interface StatCardProps {
+export interface StatCardProps {
   title: string;
-  value: string | number;
-  change?: string;
-  isPositive?: boolean;
-  icon?: React.ReactNode;
+  value: string;
+  icon: React.ReactNode;
+  trend?: string;
+  trendUp?: boolean;
+  trendFlat?: boolean;
 }
 
 export const StatCard: React.FC<StatCardProps> = ({
   title,
   value,
-  change,
-  isPositive,
-  icon,
+  Icon,
+  trend,
+  trendUp,
+  trendFlat,
 }) => {
+  const trendClass = trendUp
+    ? 'trend-up'
+    : trendFlat
+    ? 'trend-flat'
+    : 'trend-down';
+
   return (
-    <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-5 shadow-sm backdrop-blur-sm">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-400">{title}</span>
-        {icon && <div className="text-emerald-400 p-2 bg-emerald-500/10 rounded-lg">{icon}</div>}
+    <div className="stat-card bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 shadow-lg hover:border-slate-600 transition-colors duration-300">
+      <div className="stat-top flex items-center justify-between">
+        <span className="eyebrow text-slate-400 text-sm">{title}</span>
+        <Icon className="w-5 h-5 text-emerald-400" />
       </div>
-      <div className="mt-3 flex items-baseline justify-between">
-        <div className="text-2xl font-bold text-slate-100">{value}</div>
-        {change && (
-          <span
-            className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-              isPositive
-                ? 'bg-emerald-500/10 text-emerald-400'
-                : 'bg-rose-500/10 text-rose-400'
-            }`}
-          >
-            {change}
+      <div className="stat-value text-3xl font-bold mt-3">{value}</div>
+      {trend && (
+        <div className="stat-detail mt-2 flex items-center gap-1">
+          <span className={`trend ${trendClass}`}>
+            {trend}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext } from '../middleware/tenant';
 import { communicationService } from '../services/communication/communicationService';
-import { invoiceService } from '../services/invoiceService';
+import { InvoiceService } from '../services/invoiceService';
 import { paymentPromiseService } from '../services/paymentPromiseService';
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
@@ -25,7 +25,7 @@ function safeNum(v: unknown): number {
 analyticsRouter.get('/overview', async (req: Request, res: Response) => {
   const { organizationId } = req.tenant!;
   try {
-    const invoicesResult = await invoiceService.listInvoices(organizationId, undefined, undefined, undefined, 1, 100);
+    const invoicesResult = await InvoiceService.getInvoices(organizationId, undefined, undefined, undefined, 1, 100);
     const allInvoices = invoicesResult.data || [];
 
     let totalOutstanding = 0;
@@ -103,7 +103,7 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
 analyticsRouter.get('/aging-buckets', async (req: Request, res: Response) => {
   const { organizationId } = req.tenant!;
   try {
-    const invoicesResult = await invoiceService.listInvoices(organizationId, undefined, undefined, undefined, 1, 100);
+    const invoicesResult = await InvoiceService.getInvoices(organizationId, undefined, undefined, undefined, 1, 100);
     const allInvoices = invoicesResult.data || [];
 
     const today = new Date().toISOString().split('T')[0];
@@ -266,7 +266,7 @@ analyticsRouter.get('/promise-accuracy', async (req: Request, res: Response) => 
 analyticsRouter.get('/summary', async (req: Request, res: Response) => {
   const { organizationId } = req.tenant!;
   try {
-    const invoicesResult = await invoiceService.listInvoices(organizationId, undefined, undefined, undefined, 1, 100);
+    const invoicesResult = await InvoiceService.getInvoices(organizationId, undefined, undefined, undefined, 1, 100);
     const allInvoices = invoicesResult.data || [];
 
     const communicationsResult = await communicationService.getCommunicationHistory(organizationId, {

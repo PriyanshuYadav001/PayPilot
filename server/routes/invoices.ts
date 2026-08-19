@@ -4,7 +4,6 @@ import { requireOrgContext } from '../middleware/tenant';
 
 import {
   invoiceService,
-  InvoiceError,
 } from '../services/invoiceService';
 
 import {
@@ -42,7 +41,7 @@ function handleInvoiceError(
   fallbackMessage: string,
   fallbackCode: string
 ) {
-  if (err instanceof InvoiceError) {
+  if (err instanceof Error) {
     return sendError(
       res,
       err.message,
@@ -112,7 +111,7 @@ invoiceRouter.get(
           : undefined;
 
       const result =
-        await invoiceService.listInvoices(
+        await invoiceService.getInvoices(
           organizationId,
           customerId,
           status,
