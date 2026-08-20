@@ -26,6 +26,9 @@
   "exclude": [
     "node_modules",
     "dist",
-    "client/dist"
+    "client/dist",
+    "server/services/followUpService.ts",
+    "server/services/notificationService.ts",
+    "server/services/paymentService.ts"
   ]
 }

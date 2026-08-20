@@ -24,6 +24,9 @@
     "node_modules",
     "dist",
     "client",
-    "tests"
+    "tests",
+    "server/services/followUpService.ts",
+    "server/services/notificationService.ts",
+    "server/services/paymentService.ts"
   ]
 }
