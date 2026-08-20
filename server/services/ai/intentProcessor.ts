@@ -161,7 +161,7 @@ async function handleDispute(
       reason: output.disputeReason,
       status: 'open',
       source: 'ai_extracted',
-      communication_id: ctx.communicationId ?? null,
+      communication_id: ctx.communicationId ?? undefined,
       metadata: {
         confidence: output.confidence,
         sentiment: output.sentiment,

@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import { requireOrgContext, requireRole } from '../middleware/tenant';
-import { validateBody, validateParams } from '../middleware/validate';
-import { paymentLinkCreateSchema, paymentLinkIdParamSchema, paymentCreateSchema } from '../validators/payment';
+import { validateBody, validateParams, validateQuery } from '../middleware/validate';
+import { paymentLinkCreateSchema, paymentLinkIdParamSchema, paymentCreateSchema, paymentListQuerySchema } from '../validators/payment';
 import { paymentService, PaymentError } from '../services/payment/paymentService';
 import { sendSuccess, sendError } from '../utils/response';
 import { logger } from '../utils/logger';
@@ -77,6 +77,21 @@ paymentRouter.post('/create', canWrite, validateBody(paymentCreateSchema), async
     sendSuccess(res, result, 201);
   } catch (err) {
     handleError(res, err, 'createPayment');
+  }
+});
+
+paymentRouter.get('/', canRead, validateQuery(paymentListQuerySchema), async (req: Request, res: Response) => {
+  const { organizationId } = req.tenant!;
+  try {
+    const result = await paymentService.listPayments(organizationId, req.query as never);
+    sendSuccess(res, { payments: result.payments }, 200, {
+      page: result.page,
+      limit: result.limit,
+      totalCount: result.totalCount,
+      totalPages: result.totalPages,
+    });
+  } catch (err) {
+    handleError(res, err, 'listPayments');
   }
 });
 

@@ -1,5 +1,28 @@
 import React from 'react';
-import { DollarSign, AlertCircle, Clock, CheckCircle, Calendar, TrendingUp, TrendingDown } from 'lucide-react';
+import {
+  AlertCircle,
+  Activity,
+  Bell,
+  Calendar,
+  CheckCircle,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  CreditCard,
+  DollarSign,
+  Link,
+  MessageSquare,
+  MoreHorizontal,
+  Phone,
+  Receipt,
+  RefreshCw,
+  Search,
+  Settings,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { StatusBadge as StatusBadgeComp } from '../components/StatusBadge';
 import { ProgressBar } from '../components/ProgressBar';
 
@@ -53,7 +76,21 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatCard({ label, value, detail, trend, icon: Icon, accent = "emerald" }: any) {
+function StatCard({
+  label,
+  value,
+  detail,
+  trend,
+  icon: Icon,
+  accent = "emerald",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  trend?: string;
+  icon: LucideIcon;
+  accent?: string;
+}) {
   const trendClass = trend?.startsWith("+") ? "trend-up" : trend === "—" ? "trend-flat" : "trend-down";
   return (
     <div className="stat-card bg-slate-800/80 border border-slate-700/60 rounded-2xl p-6 shadow-lg hover:border-emerald-500/20 transition-colors duration-300">
@@ -72,7 +109,15 @@ function StatCard({ label, value, detail, trend, icon: Icon, accent = "emerald" 
   );
 }
 
-function SectionHeader({ eyebrow, title, action }: any) {
+function SectionHeader({
+  eyebrow,
+  title,
+  action,
+}: {
+  eyebrow: string;
+  title?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="section-header">
       <div>
@@ -84,7 +129,15 @@ function SectionHeader({ eyebrow, title, action }: any) {
   );
 }
 
-function EmptyState({ title, text, icon: Icon = () => <DollarSign className="w-8 h-8 text-slate-500" /> }: any) {
+function EmptyState({
+  title,
+  text,
+  icon: Icon = () => <DollarSign className="w-8 h-8 text-slate-500" />,
+}: {
+  title: string;
+  text: string;
+  icon?: React.ElementType<{ className?: string }>;
+}) {
   return (
     <div className="empty-state text-center py-12">
       <Icon className="w-12 h-12 mx-auto text-slate-500 mb-3" />
@@ -263,67 +316,101 @@ export default function Home() {
   );
 }
 
-function GenericPage({ page }: { page: string }, query: string, setQuery: any) {
-  const config: any = {
+function Dashboard() {
+  return <GenericPage page="Dashboard" query="" setQuery={() => undefined} />;
+}
+
+type HomePageConfig = {
+  icon: LucideIcon;
+  eyebrow: string;
+  title: string;
+  desc: string;
+  table?: "invoices" | "customers" | "payments";
+  action?: string;
+};
+
+function GenericPage({
+  page,
+  query,
+  setQuery,
+}: {
+  page: string;
+  query: string;
+  setQuery: React.Dispatch<React.SetStateAction<string>>;
+}) {
+  const config: Record<string, HomePageConfig> = {
     Customers: {
-      icon: 'Users',
+      icon: Users,
       eyebrow: "Relationship ledger",
       title: "Customers",
       desc: "Know who owes you, what they owe, and what happens next.",
+      table: "customers",
+      action: "Add customer",
     },
     Invoices: {
-      icon: 'Receipt',
+      icon: Receipt,
       eyebrow: "Accounts receivable",
       title: "Invoices",
       desc: "A clear view of every invoice from issue to collection.",
+      table: "invoices",
+      action: "Create invoice",
     },
     Payments: {
-      icon: 'CreditCard',
+      icon: CreditCard,
       eyebrow: "Cash movement",
       title: "Payments",
       desc: "Track successful, pending, failed, and refunded payments.",
+      table: "payments",
+      action: "Payment link",
     },
     "Payment Links": {
-      icon: 'Link',
+      icon: Link,
       eyebrow: "Frictionless collection",
       title: "Payment links",
       desc: "Give customers a direct route from reminder to paid.",
+      action: "Create link",
     },
     Followups: {
-      icon: 'RefreshCw',
+      icon: RefreshCw,
       eyebrow: "Collection system",
       title: "Follow-ups",
       desc: "Turn overdue invoices into a consistent, measurable workflow.",
+      action: "New rule",
     },
     Communications: {
-      icon: 'MessageSquare',
+      icon: MessageSquare,
       eyebrow: "Unified inbox",
       title: "Communications",
       desc: "Every customer conversation, with its financial context attached.",
+      action: "Compose",
     },
     Calls: {
-      icon: 'Phone',
+      icon: Phone,
       eyebrow: "Conversation intelligence",
       title: "Calls",
       desc: "Review scheduled calls, outcomes, and payment promises.",
+      action: "Schedule call",
     },
     Analytics: {
-      icon: 'Activity',
+      icon: Activity,
       eyebrow: "Performance",
       title: "Analytics",
       desc: "See the signals behind your collection rate.",
+      action: "Export report",
     },
     Billing: {
-      icon: 'CreditCard',
+      icon: CreditCard,
       eyebrow: "Workspace plan",
       title: "Billing",
       desc: "Your plan, usage, and billing history in one place.",
+      action: "Manage plan",
     },
     Settings: {
-      icon: 'Settings',
+      icon: Settings,
       eyebrow: "Workspace controls",
       title: "Settings",
       desc: "Tune PayPilot to how your team collects revenue.",
+      action: "Save changes",
     },
   };
 
@@ -341,7 +428,7 @@ function GenericPage({ page }: { page: string }, query: string, setQuery: any) {
           <h1>{c.title}</h1>
           <p className="muted">{c.desc}</p>
         </div>
-        <button className="btn btn-primary page-action">Action</button>
+          <button className="btn btn-primary page-action">{c.action ?? "Action"}</button>
       </div>
 
       {(page === "Customers" || page === "Invoices" || page === "Payments") ? (
@@ -386,11 +473,11 @@ function GenericPage({ page }: { page: string }, query: string, setQuery: any) {
             </span>
           </div>
           <section className="panel">
-            <DataTable type={c.table} />
+            <DataTable type={c.table ?? "customers"} />
           </section>
         </>
       ) : (
-        <RoutePlaceholder page={page} action={c.action} />
+        <RoutePlaceholder page={page} action={c.action ?? "Action"} />
       )}
     </div>
   );

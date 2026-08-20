@@ -1,6 +1,7 @@
 import { supabaseServer } from '../../lib/supabaseClient';
 import { invoiceService } from '../invoiceService';
 import { logger } from '../../utils/logger';
+import { toJson } from '../../utils/json';
 import { getPaymentProvider, PaymentError } from './index';
 import type { IPaymentProvider, WebhookVerificationResult } from './PaymentProvider';
 import type { Invoice, Payment, PaymentLink, PaymentLinkStatus, PaymentStatus } from '../../../shared/types';
@@ -29,6 +30,27 @@ export interface WebhookHandlingResult {
   event: string;
   applied: boolean;
   duplicate?: boolean;
+}
+
+export interface PaymentListItem extends Payment {
+  invoiceNumber: string;
+  customerName: string;
+}
+
+export interface PaymentListParams {
+  page: number;
+  limit: number;
+  status?: string;
+  sortBy: 'paid_at' | 'amount' | 'status' | 'created_at';
+  sortOrder: 'asc' | 'desc';
+}
+
+export interface PaymentListResult {
+  payments: PaymentListItem[];
+  totalCount: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export type PublicPaymentStatus = 'open' | 'partially_paid' | 'paid' | 'expired' | 'cancelled';
@@ -187,12 +209,12 @@ export async function createPaymentLink(
       provider: provider.name,
       provider_link_id: response.providerLinkId,
       short_url: response.shortUrl,
-      qr_code_url: response.qrCodeUrl ?? null,
+      qr_code_url: response.qrCodeUrl ?? undefined,
       amount,
       currency: invoice.currency,
       status: 'active',
       expires_at: expiryDate.toISOString(),
-      metadata: response.rawResponse,
+      metadata: toJson(response.rawResponse),
     })
     .select()
     .single();
@@ -282,8 +304,8 @@ export async function createPayment(
       status: 'pending',
       provider: provider.name,
       provider_order_id: order.providerOrderId,
-      idempotency_key: idempotencyKey ?? null,
-      raw_payload: order.rawResponse,
+      idempotency_key: idempotencyKey ?? undefined,
+      raw_payload: toJson(order.rawResponse),
     })
     .select()
     .single();
@@ -341,6 +363,48 @@ export async function getInvoicePayments(organizationId: string, invoiceId: stri
   return ((data ?? []) as Record<string, unknown>[]).map(mapPayment);
 }
 
+export async function listPayments(
+  organizationId: string,
+  params: PaymentListParams,
+): Promise<PaymentListResult> {
+  const from = (params.page - 1) * params.limit;
+  const to = from + params.limit - 1;
+  let query = supabaseServer
+    .from('payments')
+    .select('*, invoice:invoices(invoice_number, customer:customers(company_name, contact_name))', { count: 'exact' })
+    .eq('organization_id', organizationId)
+    .order(params.sortBy, { ascending: params.sortOrder === 'asc' })
+    .range(from, to);
+
+  if (params.status) query = query.eq('status', params.status as 'captured' | 'pending' | 'processing' | 'successful' | 'failed' | 'refunded' | 'cancelled');
+
+  const { data, error, count } = await query;
+  if (error) {
+    logger.error('listPayments failed', error.message);
+    throw new PaymentError('Failed to load payments.', 'PAYMENT_LIST_FAILED', 500);
+  }
+
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+  const totalCount = count ?? rows.length;
+  const payments = rows.map((row) => {
+    const invoice = row.invoice as Record<string, unknown> | undefined;
+    const customer = invoice?.customer as Record<string, unknown> | undefined;
+    return {
+      ...mapPayment(row),
+      invoiceNumber: (invoice?.invoice_number as string) ?? '',
+      customerName: (customer?.company_name as string) ?? (customer?.contact_name as string) ?? '',
+    };
+  });
+
+  return {
+    payments,
+    totalCount,
+    page: params.page,
+    limit: params.limit,
+    totalPages: Math.ceil(totalCount / params.limit),
+  };
+}
+
 async function findPaymentByProvider(
   orderId?: string,
   paymentId?: string
@@ -384,11 +448,11 @@ async function recordWebhookEvent(
   errorMessage?: string
 ): Promise<'created' | 'duplicate'> {
   const { error } = await supabaseServer.from('webhook_events').insert({
-    provider: providerName,
+    provider: providerName as 'razorpay',
     event_type: event,
     provider_event_id: eventKey,
-    organization_id: organizationId ?? null,
-    payload: rawPayload,
+    organization_id: organizationId ?? undefined,
+    payload: toJson(rawPayload),
     is_processed: true,
     processed_at: new Date().toISOString(),
     ...(errorMessage ? { error_message: errorMessage } : {}),
@@ -597,7 +661,7 @@ export async function createPublicCheckout(token: string): Promise<PublicCheckou
         status: 'pending',
         provider: provider.name,
         provider_order_id: order.providerOrderId,
-        raw_payload: order.rawResponse,
+        raw_payload: toJson(order.rawResponse),
       });
 
     if (insertError) {
@@ -748,10 +812,10 @@ export const paymentService = {
   getPaymentLink,
   createPayment,
   getInvoicePayments,
+  listPayments,
   getPublicPaymentPage,
   createPublicCheckout,
   handlePaymentWebhook,
 };
 
 export { PaymentError } from './index';
-

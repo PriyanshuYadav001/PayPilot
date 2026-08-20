@@ -23,3 +23,11 @@ export const paymentProviderParamSchema = z.object({
 export const publicPaymentTokenParamSchema = z.object({
   token: z.string().uuid(),
 });
+
+export const paymentListQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(['captured', 'pending', 'processing', 'successful', 'failed', 'refunded', 'cancelled']).optional(),
+  sortBy: z.enum(['paid_at', 'amount', 'status', 'created_at']).default('paid_at'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+});

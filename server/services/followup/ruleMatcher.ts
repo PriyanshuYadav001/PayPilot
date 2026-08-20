@@ -142,7 +142,7 @@ export async function matchRulesAndCreateTasks(): Promise<number> {
             organization_id: orgId,
             invoice_id: invoice.id,
             rule_id: rule.id,
-            channel: rule.channel,
+            channel: rule.channel as 'email' | 'whatsapp' | 'call' | 'sms',
             scheduled_for: new Date().toISOString(),
             status: 'pending',
             retry_count: 0,

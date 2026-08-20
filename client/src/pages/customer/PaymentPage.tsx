@@ -19,6 +19,7 @@ import {
 } from '../../lib/publicPayments';
 import type { PublicCheckout, PublicPaymentPage, PublicPaymentStatus } from '../../lib/publicPayments';
 import { loadRazorpayCheckoutScript, openRazorpayCheckout } from '../../lib/razorpayCheckout';
+import { useRoute } from 'wouter';
 
 type Phase = 'loading' | 'ready' | 'paying' | 'confirming' | 'paid' | 'error';
 
@@ -44,11 +45,6 @@ const primaryButtonClass =
 const secondaryButtonClass =
   'inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700/60 hover:bg-slate-700 text-slate-200 rounded-lg text-sm font-medium transition-colors';
 
-function extractToken(): string | null {
-  const match = window.location.pathname.match(/^\/pay\/([^/]+)/);
-  return match?.[1] ?? null;
-}
-
 function formatDate(value: string): string {
   const [year, month, day] = value.slice(0, 10).split('-');
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -60,7 +56,8 @@ function formatMoney(value: number, currency: string): string {
 }
 
 export const CustomerPaymentPage: React.FC = () => {
-  const token = useMemo(extractToken, []);
+  const [, routeParams] = useRoute('/pay/:token');
+  const token = useMemo(() => routeParams?.token ?? null, [routeParams?.token]);
   const [phase, setPhase] = useState<Phase>('loading');
   const [page, setPage] = useState<PublicPaymentPage | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);

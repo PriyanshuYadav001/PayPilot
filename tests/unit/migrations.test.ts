@@ -33,9 +33,10 @@ describe('Supabase Migrations Verification', () => {
     '025_payment_promises_v2.sql',
     '026_calls_v2.sql',
     '027_disputes_v2.sql',
+    '028_public_payment_access.sql',
   ];
 
-  it('contains all 27 sequential migration files', () => {
+  it('contains all 28 sequential migration files', () => {
     const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
     expect(files).toEqual(expectedMigrations);
   });

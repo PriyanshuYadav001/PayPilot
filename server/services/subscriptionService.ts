@@ -91,8 +91,6 @@ export interface SubscriptionDetails {
   cancel_at_period_end: boolean;
   created_at: string;
   updated_at: string;
-  trial_start: string | null;
-  trial_end: string | null;
 }
 
 export interface SubscriptionUsage {
@@ -129,9 +127,7 @@ export async function getSubscriptionDetails(organizationId: string): Promise<Su
         current_period_end,
         cancel_at_period_end,
         created_at,
-        updated_at,
-        trial_start,
-        trial_end
+        updated_at
       `)
       .eq('organization_id', organizationId)
       .single();
@@ -141,7 +137,7 @@ export async function getSubscriptionDetails(organizationId: string): Promise<Su
       return null;
     }
 
-    return subscription as SubscriptionDetails;
+    return subscription;
   } catch (err) {
     logger.error('Exception in getSubscriptionDetails', {
       error: err instanceof Error ? err.message : String(err),
@@ -290,7 +286,7 @@ export async function cancelSubscription(organizationId: string): Promise<Cancel
     // Update subscription to cancel at period end
     const { error: updateError } = await supabaseServer
       .from('subscriptions')
-      .update({ status: 'canceled_at_period_end', cancel_at_period_end: true })
+      .update({ status: 'canceled', cancel_at_period_end: true })
       .eq('organization_id', organizationId);
 
     if (updateError) {
@@ -304,7 +300,7 @@ export async function cancelSubscription(organizationId: string): Promise<Cancel
 
     return {
       success: true,
-      status: 'canceled_at_period_end',
+      status: 'canceled',
       message: 'Subscription will cancel at the end of the current billing period.',
     };
   } catch (err) {

@@ -42,11 +42,15 @@ function handleInvoiceError(
   fallbackCode: string
 ) {
   if (err instanceof Error) {
+    const typedError = err as Error & {
+      code?: string;
+      status?: number;
+    };
     return sendError(
       res,
       err.message,
-      err.code,
-      err.status
+      typedError.code,
+      typedError.status
     );
   }
 

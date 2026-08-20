@@ -383,3 +383,5 @@ const token = session?.access_token;
     </div>
   );
 };
+
+export default Settings;

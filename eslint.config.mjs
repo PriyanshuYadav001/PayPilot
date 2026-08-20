@@ -12,6 +12,7 @@ export default tseslint.config(
       'coverage/**',
       '.gemini/**',
       'client/dist/**',
+      'client/public/__manus__/**',
     ],
   },
   {

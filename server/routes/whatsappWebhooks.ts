@@ -16,6 +16,7 @@ import crypto from 'crypto';
 import { Router, Request, Response } from 'express';
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
+import { toJson } from '../utils/json';
 import { sendSuccess, sendError } from '../utils/response';
 
 export const whatsappWebhookRouter = Router();
@@ -160,7 +161,7 @@ async function processStatusUpdate(
         status: statusField,
         recipient_id: recipientId,
         phone_number_id: phoneNumberId,
-        errors: errors.length > 0 ? errors : undefined,
+        errors: errors.length > 0 ? toJson(errors) : undefined,
       },
       is_processed: true,
       processed_at: new Date().toISOString(),
@@ -171,11 +172,11 @@ async function processStatusUpdate(
     const { error: updateErr } = await supabaseServer
       .from('communications')
       .update({
-        status: mappedStatus,
+        status: mappedStatus as 'queued' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'bounced',
         metadata: {
           provider_status: statusField,
           updated_via: 'webhook',
-          errors: errors.length > 0 ? errors : undefined,
+          errors: errors.length > 0 ? toJson(errors) : undefined,
         },
       })
       .eq('provider_message_id', providerEventId)
@@ -271,7 +272,7 @@ async function processIncomingMessage(
         body: messageBody,
         phone_number_id: phoneNumberId,
       },
-      organization_id: matchedOrganizationId,
+      organization_id: matchedOrganizationId ?? undefined,
       is_processed: true,
       processed_at: new Date().toISOString(),
     });

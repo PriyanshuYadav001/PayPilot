@@ -7,6 +7,7 @@
  */
 
 import { supabaseServer } from '../../lib/supabaseClient';
+import type { Database } from '../../../types/database.types';
 import { logger } from '../../utils/logger';
 import { communicationService } from '../communication/communicationService';
 import { renderTemplate, renderSubject, type TemplateVariables } from './templateRenderer';
@@ -189,7 +190,7 @@ async function markTaskFailed(taskId: string, errorMessage: string, retryCount: 
     ? new Date(Date.now() + nextRetryDelay).toISOString()
     : undefined;
 
-  const update: Record<string, unknown> = {
+  const update: Database['public']['Tables']['follow_up_tasks']['Update'] = {
     status: newStatus,
     retry_count: retryCount + 1,
     error_message: errorMessage,

@@ -21,6 +21,21 @@ export interface PaymentCreateResult {
   keyId?: string;
 }
 
+export interface PaymentListItem extends Payment {
+  invoiceNumber: string;
+  customerName: string;
+}
+
+export interface PaymentListResult {
+  payments: PaymentListItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+  };
+}
+
 function throwOnFailure<T>(response: ApiResponse<T>, fallback: string): T {
   if (!response.success || response.data === undefined) {
     throw new Error(response.error?.message || fallback);
@@ -87,4 +102,22 @@ export async function listInvoicePayments(
   });
   const data = throwOnFailure(response, 'Failed to load payments.');
   return data.payments;
+}
+
+export async function listPayments(
+  orgId: string,
+  token: string,
+  params: { page?: number; limit?: number; status?: Payment['status'] } = {},
+): Promise<PaymentListResult> {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.limit) query.set('limit', String(params.limit));
+  if (params.status) query.set('status', params.status);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  const response = await apiRequest<{ payments: PaymentListItem[] }>(`/payments${suffix}`, { orgId, token });
+  const data = throwOnFailure(response, 'Failed to load payments.');
+  return {
+    payments: data.payments,
+    pagination: response.pagination ?? { page: 1, limit: data.payments.length, totalCount: data.payments.length, totalPages: 1 },
+  };
 }

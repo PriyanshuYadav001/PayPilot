@@ -1,11 +1,6 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
-import type {
-  Invoice,
-  InvoiceItem,
-  Customer,
-  InvoiceStatus,
-} from '../../shared/types';
+import type { Invoice, InvoiceItem, InvoiceStatus } from '../../shared/types';
 
 export interface InvoiceItemInput {
   description: string;
@@ -43,56 +38,68 @@ export interface InvoiceFilters {
 
 export interface InvoiceListResult {
   invoices: Invoice[];
+  data: Invoice[];
   total: number;
   page: number;
+  limit: number;
   totalPages: number;
+  lastPage: number;
 }
 
-let serviceInstance: InvoiceService | null = null;
-
 export class InvoiceService {
-  constructor() {
-    if (!serviceInstance) {
-      serviceInstance = this;
-    }
-    return serviceInstance;
-  }
+  async createInvoice(
+    organizationId: string,
+    _userId: string,
+    input: InvoiceCreateInput,
+  ): Promise<Invoice>;
+  async createInvoice(input: InvoiceCreateInput): Promise<Invoice>;
+  async createInvoice(
+    organizationOrInput: string | InvoiceCreateInput,
+    userOrInput?: string | InvoiceCreateInput,
+    legacyInput?: InvoiceCreateInput,
+  ): Promise<Invoice> {
+    const organizationId = typeof organizationOrInput === 'string'
+      ? organizationOrInput
+      : undefined;
+    const input = typeof organizationOrInput === 'string'
+      ? legacyInput
+      : organizationOrInput;
+    if (!input) throw new Error('Invoice input is required');
 
-  async createInvoice(input: InvoiceCreateInput): Promise<Invoice> {
-    const {
-      supabase,
-      user,
-    } = supabaseServer();
-
-    const {
-      data: { user: authenticatedUser },
-    } = await supabase.auth.getUser();
-
-    if (!authenticatedUser) {
-      throw new Error('Unauthenticated');
-    }
-
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('id')
-      .eq('owner_id', authenticatedUser.id)
-      .single();
-
-    if (!org) {
-      throw new Error('Organization not found');
-    }
-
-    const { data, error } = await supabase
+    const orgId = organizationId;
+    if (!orgId) throw new Error('Organization is required');
+    const lineItems = input.items.map((item) => {
+      const subtotal = item.quantity * item.unitPrice;
+      const taxRate = item.taxRate ?? 0;
+      const taxAmount = subtotal * taxRate / 100;
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        tax_rate: taxRate,
+        tax_amount: taxAmount,
+        total: subtotal + taxAmount,
+      };
+    });
+    const subtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+    const taxTotal = lineItems.reduce((sum, item) => sum + item.tax_amount, 0);
+    const discount = input.discount ?? 0;
+    const totalAmount = Math.max(0, subtotal + taxTotal - discount);
+    const { data, error } = await supabaseServer
       .from('invoices')
       .insert({
-        organization_id: org.id,
+        organization_id: orgId,
         customer_id: input.customerId,
         invoice_number: input.invoiceNumber,
         issue_date: input.issueDate,
         due_date: input.dueDate,
-        currency: input.currency || 'USD',
-        discount: input.discount ?? 0,
-        status: input.status || 'draft',
+        currency: input.currency ?? 'USD',
+        subtotal,
+        tax_total: taxTotal,
+        total_amount: totalAmount,
+        amount_due: totalAmount,
+        discount,
+        status: input.status ?? 'draft',
         notes: input.notes,
         terms_and_conditions: input.termsAndConditions,
       })
@@ -104,96 +111,83 @@ export class InvoiceService {
       throw error;
     }
 
-    // Create invoice items
-    if (input.items && input.items.length > 0) {
-      const itemsToInsert = input.items.map((item) => ({
+    if (lineItems.length > 0) {
+      const items = lineItems.map((item) => ({
         invoice_id: data.id,
-        description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        tax: item.taxRate ?? 0,
-        total: item.quantity * item.unitPrice,
+        ...item,
       }));
-
-      await supabase.from('invoice_items').insert(itemsToInsert);
+      const { error: itemError } = await supabaseServer.from('invoice_items').insert(items);
+      if (itemError) throw itemError;
     }
 
-    return data as Invoice;
+    return data as unknown as Invoice;
   }
 
-  async getInvoices(filters: InvoiceFilters = {}): Promise<InvoiceListResult> {
-    const {
-      supabase,
-    } = supabaseServer();
+  async getInvoices(filters?: InvoiceFilters): Promise<InvoiceListResult>;
+  async getInvoices(
+    organizationId: string,
+    customerId?: string,
+    status?: InvoiceStatus,
+    _search?: string,
+    page?: number,
+    limit?: number,
+  ): Promise<InvoiceListResult>;
+  async getInvoices(
+    filtersOrOrganization: InvoiceFilters | string = {},
+    customerId?: string,
+    status?: InvoiceStatus,
+    _search?: string,
+    page = 1,
+    limit = 20,
+  ): Promise<InvoiceListResult> {
+    const filters: InvoiceFilters = typeof filtersOrOrganization === 'string'
+      ? { organizationId: filtersOrOrganization, customerId, status }
+      : filtersOrOrganization;
+    let query = supabaseServer
+      .from('invoices')
+      .select('*, invoice_items(*)', { count: 'exact' });
 
-    let query = supabase.from('invoices').select('*, invoice_items(*)', {
-      count: 'exact',
-    });
-
-    // Apply organization filter (RLS should handle this, but we add safety)
-    if (filters.organizationId) {
-      query = query.eq('organization_id', filters.organizationId);
-    }
-
-    if (filters.status) {
-      query = query.eq('status', filters.status);
-    }
-
-    if (filters.customerId) {
-      query = query.eq('customer_id', filters.customerId);
-    }
-
-    if (filters.dueDateStart) {
-      query = query.gte('due_date', filters.dueDateStart);
-    }
-
-    if (filters.dueDateEnd) {
-      query = query.lte('due_date', filters.dueDateEnd);
-    }
+    if (filters.organizationId) query = query.eq('organization_id', filters.organizationId);
+    if (filters.status) query = query.eq('status', filters.status);
+    if (filters.customerId) query = query.eq('customer_id', filters.customerId);
+    if (filters.dueDateStart) query = query.gte('due_date', filters.dueDateStart);
+    if (filters.dueDateEnd) query = query.lte('due_date', filters.dueDateEnd);
 
     const { data, error, count } = await query.order('due_date', { ascending: true });
+    if (error) throw error;
 
-    if (error) {
-      logger.error('Error fetching invoices:', error);
-      throw error;
-    }
-
-    return {
-      invoices: data as Invoice[],
-      total: count ?? 0,
-      page: 1,
-      totalPages: 1,
-    };
+    const invoices = (data ?? []) as unknown as Invoice[];
+    const total = count ?? invoices.length;
+    const lastPage = Math.max(1, Math.ceil(total / limit));
+    return { invoices, data: invoices, total, page, limit, totalPages: lastPage, lastPage };
   }
 
-  async getInvoice(id: string): Promise<Invoice> {
-    const {
-      supabase,
-    } = supabaseServer();
-
-    const { data, error } = await supabase
+  async getInvoice(_organizationOrId: string, legacyId?: string): Promise<Invoice> {
+    const id = legacyId ?? _organizationOrId;
+    const { data, error } = await supabaseServer
       .from('invoices')
       .select('*, invoice_items(*)')
       .eq('id', id)
       .single();
-
-    if (error) {
-      logger.error('Error fetching invoice:', error);
-      throw error;
-    }
-
-    return data as Invoice;
+    if (error) throw error;
+    return data as unknown as Invoice;
   }
 
   async updateInvoice(
+    organizationId: string,
     id: string,
-    input: InvoiceUpdateInput
+    input: InvoiceUpdateInput,
+  ): Promise<Invoice>;
+  async updateInvoice(id: string, input: InvoiceUpdateInput): Promise<Invoice>;
+  async updateInvoice(
+    organizationOrId: string,
+    idOrInput: string | InvoiceUpdateInput,
+    legacyInput?: InvoiceUpdateInput,
   ): Promise<Invoice> {
-    const {
-      supabase,
-    } = supabaseServer();
-
-    const { data, error } = await supabase
+    const id = typeof idOrInput === 'string' ? idOrInput : organizationOrId;
+    const input = typeof idOrInput === 'string' ? legacyInput : idOrInput;
+    if (!input) throw new Error('Invoice update is required');
+    const { data, error } = await supabaseServer
       .from('invoices')
       .update({
         status: input.status,
@@ -204,42 +198,37 @@ export class InvoiceService {
       .eq('id', id)
       .select()
       .single();
-
-    if (error) {
-      logger.error('Error updating invoice:', error);
-      throw error;
-    }
-
-    return data as Invoice;
+    if (error) throw error;
+    return data as unknown as Invoice;
   }
 
-  async deleteInvoice(id: string): Promise<void> {
-    const {
-      supabase,
-    } = supabaseServer();
-
-    const { error } = await supabase.from('invoices').delete().eq('id', id);
-
-    if (error) {
-      logger.error('Error deleting invoice:', error);
-      throw error;
-    }
+  async deleteInvoice(_organizationOrId: string, legacyId?: string): Promise<void> {
+    const id = legacyId ?? _organizationOrId;
+    const { error } = await supabaseServer.from('invoices').delete().eq('id', id);
+    if (error) throw error;
   }
 
-  // Static accessor for singleton instance
+  static async getInvoices(
+    organizationId: string,
+    customerId?: string,
+    status?: InvoiceStatus,
+    search?: string,
+    page = 1,
+    limit = 100,
+  ): Promise<InvoiceListResult> {
+    return invoiceService.getInvoices(organizationId, customerId, status, search, page, limit);
+  }
+
   static get instance(): InvoiceService {
-    if (!serviceInstance) {
-      serviceInstance = new InvoiceService();
-    }
-    return serviceInstance;
+    return invoiceService;
   }
 }
 
-// Allow static method calls for convenience
+export const invoiceService = new InvoiceService();
 export const InvoiceServiceStatic = InvoiceService;
 
-// Export singleton instance
-export const invoiceService = new InvoiceService();
+export async function getInvoice(organizationId: string, invoiceId: string): Promise<Invoice> {
+  return invoiceService.getInvoice(organizationId, invoiceId);
+}
 
-// Export types
-export type { InvoiceItemInput, InvoiceCreateInput, InvoiceUpdateInput, InvoiceFilters, InvoiceListResult };
+export type { InvoiceItem };

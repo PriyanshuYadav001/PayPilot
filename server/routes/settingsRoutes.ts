@@ -15,6 +15,8 @@ import {
 } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import { sendSuccess, sendError } from '../utils/response';
+import type { Database } from '../../types/database.types';
+import { toJson } from '../utils/json';
 
 export const settingsRouter = Router();
 
@@ -91,14 +93,14 @@ settingsRouter.put(
       const { organizationId } = req.tenant!;
 
       // Build the update object
-      const updateData: Record<string, unknown> = {};
+      const updateData: Database['public']['Tables']['organizations']['Update'] = {};
 
       if (organization.name !== undefined) updateData.name = organization.name;
       if (organization.supportEmail !== undefined) updateData.support_email = organization.supportEmail;
       if (organization.supportPhone !== undefined) updateData.support_phone = organization.supportPhone;
       if (organization.currency !== undefined) updateData.currency = organization.currency;
       if (organization.timezone !== undefined) updateData.timezone = organization.timezone;
-      if (organization.billingAddress !== undefined) updateData.billing_address = organization.billingAddress;
+      if (organization.billingAddress !== undefined) updateData.billing_address = toJson(organization.billingAddress);
 
       // Update organization
       const { data: updatedOrg, error: orgError } = await supabaseServer

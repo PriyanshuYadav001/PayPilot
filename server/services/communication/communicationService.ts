@@ -12,6 +12,7 @@ import { getCommunicationProvider } from './index';
 import type { EmailPayload, EmailDeliveryResult } from './EmailProvider';
 import type { WhatsAppDirectMessagePayload, WhatsAppDeliveryResult } from './WhatsAppProvider';
 import type { OutboundCallRequest, OutboundCallResponse } from './CallProvider';
+import { toJson } from '../../utils/json';
 
 export interface SendMessageInput {
   customerId: string;
@@ -256,17 +257,17 @@ export async function recordCommunication(
     .insert({
       organization_id: organizationId,
       customer_id: input.customerId,
-      invoice_id: input.invoiceId ?? null,
+      invoice_id: input.invoiceId ?? undefined,
       channel: input.channel,
       direction: input.direction,
       message: input.message,
-      subject: input.subject ?? null,
+      subject: input.subject ?? undefined,
       status: input.status,
-      provider_message_id: input.providerMessageId ?? null,
+      provider_message_id: input.providerMessageId ?? undefined,
       recipient_identifier: input.recipientIdentifier ?? '',
-      sender_identifier: input.senderIdentifier ?? null,
+      sender_identifier: input.senderIdentifier ?? undefined,
       sent_at: input.sentAt ?? new Date().toISOString(),
-      metadata: input.metadata ?? {},
+    metadata: input.metadata ? toJson(input.metadata) : {},
     })
     .select('*')
     .single();
