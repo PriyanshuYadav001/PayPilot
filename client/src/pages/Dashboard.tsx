@@ -1,7 +1,8 @@
 import React from 'react';
 import { DollarSign, AlertCircle, Clock, CheckCircle, TrendingUp, TrendingDown, Calendar } from 'lucide-react';
-import { StatCard } from '../components/StatCard';
+import { StatusBadge as StatusBadgeComp } from '../components/StatusBadge';
 import { ProgressBar } from '../components/ProgressBar';
+import { StatCard } from '../components/StatCard';
 
 export const Dashboard: React.FC = () => {
   return (
@@ -14,12 +15,12 @@ export const Dashboard: React.FC = () => {
             <p className="text-slate-400 text-sm">Autonomous B2B Collections Platform</p>
           </div>
           <div className="flex items-center gap-3">
-            <button className="btn btn-ghost btn-sm" onclick="window.location.href='/settings'">
+            <button className="btn btn-ghost btn-sm" onClick={() => window.location.href='/settings'}">
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3 12l2-2m0 0l2-2m-2 2l2 2m2-2l2 2m7-3h9m-9 0h9m-9 0V5a2 2 0 012-2h1a2 2 0 012 2v6.367m-7 0a2.828 2.828 0 114 4L19.629 21H5a2 2 0 01-2-2z"/>
               </svg>
             </button>
-            <button className="btn btn-outline btn-sm" onclick="window.location.href='/analytics'">
+            <button className="btn btn-outline btn-sm" onClick={() => window.location.href='/analytics'}">
               Analytics
             </button>
           </div>
