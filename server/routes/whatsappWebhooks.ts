@@ -171,7 +171,7 @@ async function processStatusUpdate(
     const { error: updateErr } = await supabaseServer
       .from('communications')
       .update({
-        status: mappedStatus,
+        status: mappedStatus as 'queued' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'bounced',
         metadata: {
           provider_status: statusField,
           updated_via: 'webhook',
@@ -271,7 +271,7 @@ async function processIncomingMessage(
         body: messageBody,
         phone_number_id: phoneNumberId,
       },
-      organization_id: matchedOrganizationId,
+      organization_id: matchedOrganizationId ?? undefined,
       is_processed: true,
       processed_at: new Date().toISOString(),
     });

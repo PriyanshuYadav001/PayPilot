@@ -290,7 +290,7 @@ export async function cancelSubscription(organizationId: string): Promise<Cancel
     // Update subscription to cancel at period end
     const { error: updateError } = await supabaseServer
       .from('subscriptions')
-      .update({ status: 'canceled_at_period_end', cancel_at_period_end: true })
+      .update({ status: 'canceled', cancel_at_period_end: true })
       .eq('organization_id', organizationId);
 
     if (updateError) {
@@ -304,7 +304,7 @@ export async function cancelSubscription(organizationId: string): Promise<Cancel
 
     return {
       success: true,
-      status: 'canceled_at_period_end',
+      status: 'canceled',
       message: 'Subscription will cancel at the end of the current billing period.',
     };
   } catch (err) {

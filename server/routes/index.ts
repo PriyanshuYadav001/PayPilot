@@ -14,6 +14,8 @@ import { webhookRouter } from './webhooks';
 import { whatsappWebhookRouter } from './whatsappWebhooks';
 import { settingsRoutes } from './settingsRoutes';
 import { subscriptionRoutes } from './subscriptionRoutes';
+import { cronRouter } from './cron';
+import { followUpTasksRouter } from './followUpTasks';
 
 export const apiRouter = Router();
 
@@ -37,6 +39,7 @@ apiRouter.use('/communications', communicationRouter);
 
 // Mount Follow-Up Rule Management endpoints
 apiRouter.use('/follow-up-rules', followUpRuleRouter);
+apiRouter.use('/follow-up-tasks', followUpTasksRouter);
 
 // Mount Payment Promise Tracking endpoints
 apiRouter.use('/payment-promises', paymentPromiseRouter);
@@ -60,3 +63,6 @@ apiRouter.use('/webhooks', whatsappWebhookRouter);
 
 // Mount Public Payment endpoints (unauthenticated; secure public_token)
 apiRouter.use('/public', publicRouter);
+
+// Protected by CRON_SECRET rather than user authentication.
+apiRouter.use('/cron', cronRouter);

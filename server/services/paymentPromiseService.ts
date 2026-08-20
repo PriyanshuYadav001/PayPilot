@@ -86,7 +86,7 @@ export async function listPromises(organizationId: string, params: PromiseListPa
     .select('*', { count: 'exact' })
     .eq('organization_id', organizationId);
 
-  if (status) query = query.eq('status', status);
+  if (status) query = query.eq('status', status as 'pending' | 'fulfilled' | 'missed' | 'cancelled');
   if (customerId) query = query.eq('customer_id', customerId);
   if (invoiceId) query = query.eq('invoice_id', invoiceId);
 
@@ -148,12 +148,12 @@ export async function createPromise(
       invoice_id: input.invoiceId,
       customer_id: input.customerId,
       promised_date: input.promisedDate,
-      promised_amount: input.promisedAmount ?? null,
-      source: input.source ?? 'manual',
-      notes: input.notes ?? null,
-      communication_id: input.communicationId ?? null,
-      confidence_score: input.confidenceScore ?? null,
-      ai_extracted_quote: input.aiExtractedQuote ?? null,
+      promised_amount: input.promisedAmount ?? undefined,
+      source: (input.source ?? 'manual') as 'manual' | 'ai_extracted' | 'customer_portal' | 'webhook',
+      notes: input.notes ?? undefined,
+      communication_id: input.communicationId ?? undefined,
+      confidence_score: input.confidenceScore ?? undefined,
+      ai_extracted_quote: input.aiExtractedQuote ?? undefined,
       status: 'pending',
     })
     .select('*')
@@ -321,7 +321,7 @@ export async function checkMissedPromises(): Promise<number> {
       .insert({
         organization_id: promise.organization_id,
         invoice_id: promise.invoice_id,
-        rule_id: null,
+        rule_id: undefined,
         channel: 'email',
         scheduled_for: new Date().toISOString(),
         status: 'pending',

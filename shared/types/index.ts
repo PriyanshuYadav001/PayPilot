@@ -33,7 +33,7 @@ export interface Payment {
   providerPaymentId?: string;
   providerOrderId?: string;
   referenceNumber?: string;
-  paidAt: string;
+  paidAt?: string | null;
   notes?: string;
   createdAt: string;
 }
@@ -271,4 +271,20 @@ export interface FollowUpTask {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+export type PromisedPayment = PaymentPromise;
+
+export interface Notification {
+  id: string;
+  organizationId: string;
+  customerId: string;
+  invoiceId?: string;
+  channel: CommunicationChannel;
+  recipient: string;
+  subject?: string;
+  content: string;
+  status: string;
+  providerMessageId?: string;
+  sentAt?: string;
 }

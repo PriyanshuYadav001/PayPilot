@@ -57,11 +57,11 @@ interface CallRow {
   status: string;
   duration_seconds: number;
   recording_url: string | null;
-  transcript: string | null;
-  summary: string | null;
-  metadata: Record<string, unknown> | null;
-  started_at: string | null;
-  ended_at: string | null;
+  transcript?: string | null;
+  summary?: string | null;
+  metadata?: Record<string, unknown> | null;
+  started_at?: string | null;
+  ended_at?: string | null;
   created_at: string;
 }
 
@@ -133,8 +133,8 @@ export async function createCall(input: CreateCallInput): Promise<Call> {
     .insert({
       organization_id: input.organizationId,
       customer_id: input.customerId,
-      invoice_id: input.invoiceId ?? null,
-      follow_up_task_id: input.followUpTaskId ?? null,
+      invoice_id: input.invoiceId ?? undefined,
+      follow_up_task_id: input.followUpTaskId ?? undefined,
       provider: 'custom',
       provider_call_id: callResult.providerCallId,
       from_number: normalizePhone(fromNumber),
@@ -142,7 +142,7 @@ export async function createCall(input: CreateCallInput): Promise<Call> {
       status: callResult.status,
       duration_seconds: 0,
       metadata: input.metadata ?? {},
-      started_at: callResult.status === 'in_progress' ? new Date().toISOString() : null,
+      started_at: callResult.status === 'in_progress' ? new Date().toISOString() : undefined,
     })
     .select('*')
     .single();

@@ -1,5 +1,3 @@
-/// <reference types="supabase" />
-
 // ============================================================
 // ENUMS
 // ============================================================
@@ -13,9 +11,12 @@ export type invoice_status =
   | 'overdue'
   | 'disputed'
   | 'voided'
-  | 'written_off';
+  | 'written_off'
+  | 'sent'
+  | 'cancelled';
 
 export type payment_status =
+  | 'captured'
   | 'pending'
   | 'processing'
   | 'successful'
@@ -73,6 +74,96 @@ export type subscription_status =
 export type member_role = 'owner' | 'admin' | 'member' | 'viewer';
 
 export type communication_status = 'queued' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed' | 'bounced';
+
+export type payment_link_status = 'active' | 'paid' | 'expired' | 'cancelled';
+export type dispute_status = 'open' | 'under_review' | 'resolved_rejected' | 'resolved_credited' | 'resolved_paid';
+export type call_status = 'queued' | 'ringing' | 'in_progress' | 'completed' | 'busy' | 'no_answer' | 'failed';
+export type usage_metric = 'invoices_created' | 'whatsapp_sent' | 'emails_sent' | 'calls_made' | 'ai_analyses';
+export type promise_source = 'manual' | 'ai_extracted' | 'customer_portal' | 'webhook';
+export type dispute_source = 'manual' | 'ai_extracted' | 'ai_transcript' | 'customer_portal';
+
+type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+type RowWithLegacy<T> = T & { [column: string]: unknown };
+type TableDefinition<Row, Insert = Partial<Row>, Update = Partial<Row>> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
+type RequiredInsert<Row, _Keys extends keyof Row> = Partial<Row>;
+
+type ProfileRow = RowWithLegacy<Profile>;
+type OrganizationRow = RowWithLegacy<Organization & { created_by?: string }>;
+type OrganizationMemberRow = RowWithLegacy<OrganizationMember>;
+type CustomerRow = RowWithLegacy<Customer>;
+type InvoiceRow = RowWithLegacy<Invoice>;
+type InvoiceItemRow = RowWithLegacy<InvoiceItem>;
+type PaymentRow = RowWithLegacy<Payment & { idempotency_key?: string }>;
+type PaymentLinkRow = RowWithLegacy<PaymentLink>;
+type CommunicationRow = RowWithLegacy<Communication>;
+type FollowUpRuleRow = RowWithLegacy<FollowUpRule>;
+type FollowUpTaskRow = RowWithLegacy<FollowUpTask>;
+type PaymentPromiseRow = RowWithLegacy<PromisedPayment>;
+type DisputeRow = RowWithLegacy<Dispute>;
+type CallRow = RowWithLegacy<Call>;
+type WebhookEventRow = RowWithLegacy<WebhookEvent>;
+type SubscriptionRow = RowWithLegacy<Subscription>;
+type UsageRecordRow = RowWithLegacy<UsageRecord>;
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: TableDefinition<ProfileRow, RequiredInsert<ProfileRow, 'id' | 'email' | 'full_name'>>;
+      organizations: TableDefinition<OrganizationRow, RequiredInsert<OrganizationRow, 'name' | 'slug'>>;
+      organization_members: TableDefinition<OrganizationMemberRow, RequiredInsert<OrganizationMemberRow, 'organization_id' | 'user_id'>>;
+      customers: TableDefinition<CustomerRow, RequiredInsert<CustomerRow, 'organization_id' | 'company_name' | 'contact_name' | 'email'>>;
+      invoices: TableDefinition<InvoiceRow, RequiredInsert<InvoiceRow, 'organization_id' | 'customer_id' | 'invoice_number' | 'issue_date' | 'due_date' | 'subtotal' | 'amount_due'>>;
+      invoice_items: TableDefinition<InvoiceItemRow, RequiredInsert<InvoiceItemRow, 'invoice_id' | 'description' | 'unit_price' | 'total'>>;
+      payments: TableDefinition<PaymentRow, RequiredInsert<PaymentRow, 'organization_id' | 'invoice_id' | 'amount'>>;
+      payment_links: TableDefinition<PaymentLinkRow, RequiredInsert<PaymentLinkRow, 'organization_id' | 'invoice_id' | 'provider_link_id' | 'short_url' | 'amount'>>;
+      communications: TableDefinition<CommunicationRow, RequiredInsert<CommunicationRow, 'organization_id' | 'customer_id' | 'recipient_identifier' | 'message'>>;
+      follow_up_rules: TableDefinition<FollowUpRuleRow, RequiredInsert<FollowUpRuleRow, 'organization_id' | 'name' | 'days_relative_to_due' | 'channel' | 'template_body'>>;
+      follow_up_tasks: TableDefinition<FollowUpTaskRow, RequiredInsert<FollowUpTaskRow, 'organization_id' | 'invoice_id' | 'channel' | 'scheduled_for'>>;
+      payment_promises: TableDefinition<PaymentPromiseRow, RequiredInsert<PaymentPromiseRow, 'organization_id' | 'invoice_id' | 'customer_id' | 'promised_date'>>;
+      disputes: TableDefinition<DisputeRow, RequiredInsert<DisputeRow, 'organization_id' | 'invoice_id' | 'customer_id' | 'category' | 'reason'>>;
+      calls: TableDefinition<CallRow, RequiredInsert<CallRow, 'organization_id' | 'customer_id' | 'from_number' | 'to_number'>>;
+      webhook_events: TableDefinition<WebhookEventRow, RequiredInsert<WebhookEventRow, 'provider' | 'event_type' | 'provider_event_id' | 'payload'>>;
+      subscriptions: TableDefinition<SubscriptionRow, RequiredInsert<SubscriptionRow, 'organization_id' | 'current_period_end'>>;
+      usage_records: TableDefinition<UsageRecordRow, RequiredInsert<UsageRecordRow, 'organization_id' | 'metric' | 'period_start' | 'period_end'>>;
+      // Legacy tables remain typed because older, unused services still compile
+      // against them while the active architecture uses the tables above.
+      follow_ups: TableDefinition<RowWithLegacy<Record<string, Json>>>;
+      notifications: TableDefinition<RowWithLegacy<Record<string, Json>>>;
+      promised_payments: TableDefinition<RowWithLegacy<Record<string, Json>>>;
+    };
+    Views: Record<string, never>;
+    Functions: {
+      [functionName: string]: {
+        Args: Record<string, unknown>;
+        Returns: unknown;
+      };
+    };
+    Enums: {
+      invoice_status: invoice_status;
+      payment_status: payment_status;
+      payment_method: payment_method;
+      communication_channel: communication_channel;
+      message_direction: message_direction;
+      communication_status: communication_status;
+      task_status: task_status;
+      promise_status: promise_status;
+      plan_tier: plan_tier;
+      subscription_status: subscription_status;
+      member_role: member_role;
+      payment_link_status: payment_link_status;
+      dispute_status: dispute_status;
+      call_status: call_status;
+      usage_metric: usage_metric;
+    };
+    CompositeTypes: Record<string, never>;
+  };
+};
 
 // ============================================================
 // PROFILES
@@ -379,6 +470,7 @@ export interface Call {
   status: 'queued' | 'ringing' | 'in_progress' | 'completed' | 'busy' | 'no_answer' | 'failed';
   duration_seconds: number;
   recording_url?: string;
+  transcript?: string;
   summary?: string;
   started_at?: string;
   ended_at?: string;

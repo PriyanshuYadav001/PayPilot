@@ -88,7 +88,7 @@ export async function listRules(organizationId: string, params: RuleListParams):
     query = query.eq('is_active', isActive === 'true');
   }
   if (channel) {
-    query = query.eq('channel', channel);
+    query = query.eq('channel', channel as 'email' | 'whatsapp' | 'call' | 'sms');
   }
 
   const sortColumn = SORTABLE_COLUMNS[sortBy] ?? 'escalation_priority';
@@ -150,10 +150,10 @@ export async function createRule(
       name: input.name,
       is_active: input.isActive ?? true,
       days_relative_to_due: input.daysRelativeToDue,
-      channel: input.channel,
-      template_subject: input.templateSubject ?? null,
+      channel: input.channel as 'email' | 'whatsapp' | 'call' | 'sms',
+      template_subject: input.templateSubject ?? undefined,
       template_body: input.templateBody,
-      template_id_external: input.templateIdExternal ?? null,
+      template_id_external: input.templateIdExternal ?? undefined,
       escalation_priority: input.escalationPriority ?? 1,
       include_payment_link: input.includePaymentLink ?? true,
       include_qr_code: input.includeQrCode ?? true,

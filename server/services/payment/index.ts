@@ -1,9 +1,11 @@
 import type { IPaymentProvider } from './PaymentProvider';
 import { PaymentError, PaymentProviderError } from './PaymentProvider';
 import { RazorpayProvider } from './RazorpayProvider';
+import { MockPaymentProvider } from './MockPaymentProvider';
 
 const providers: Record<string, () => IPaymentProvider> = {
   razorpay: () => new RazorpayProvider(),
+  mock: () => new MockPaymentProvider(),
 };
 
 export function getPaymentProvider(name = 'razorpay'): IPaymentProvider {
@@ -19,4 +21,3 @@ export function getPaymentProvider(name = 'razorpay'): IPaymentProvider {
 }
 
 export { PaymentError, PaymentProviderError };
-
