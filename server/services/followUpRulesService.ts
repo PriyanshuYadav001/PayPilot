@@ -1,6 +1,7 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import type { FollowUpRule, FollowUpTask } from '../../shared/types';
+import type { Database } from '../../types/database.types';
 
 export class FollowUpRuleError extends Error {
   code: string;
@@ -185,10 +186,10 @@ export async function updateRule(
     isActive: boolean;
   }>,
 ): Promise<FollowUpRule | null> {
-  const dbInput: Record<string, unknown> = {};
+  const dbInput: Database['public']['Tables']['follow_up_rules']['Update'] = {};
   if (input.name !== undefined) dbInput.name = input.name;
   if (input.daysRelativeToDue !== undefined) dbInput.days_relative_to_due = input.daysRelativeToDue;
-  if (input.channel !== undefined) dbInput.channel = input.channel;
+  if (input.channel !== undefined) dbInput.channel = input.channel as Database['public']['Enums']['communication_channel'];
   if (input.templateSubject !== undefined) dbInput.template_subject = input.templateSubject;
   if (input.templateBody !== undefined) dbInput.template_body = input.templateBody;
   if (input.templateIdExternal !== undefined) dbInput.template_id_external = input.templateIdExternal;

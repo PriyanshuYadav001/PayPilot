@@ -1,6 +1,7 @@
 import { supabaseServer } from '../../lib/supabaseClient';
 import { invoiceService } from '../invoiceService';
 import { logger } from '../../utils/logger';
+import { toJson } from '../../utils/json';
 import { getPaymentProvider, PaymentError } from './index';
 import type { IPaymentProvider, WebhookVerificationResult } from './PaymentProvider';
 import type { Invoice, Payment, PaymentLink, PaymentLinkStatus, PaymentStatus } from '../../../shared/types';
@@ -213,7 +214,7 @@ export async function createPaymentLink(
       currency: invoice.currency,
       status: 'active',
       expires_at: expiryDate.toISOString(),
-      metadata: response.rawResponse,
+      metadata: toJson(response.rawResponse),
     })
     .select()
     .single();
@@ -304,7 +305,7 @@ export async function createPayment(
       provider: provider.name,
       provider_order_id: order.providerOrderId,
       idempotency_key: idempotencyKey ?? undefined,
-      raw_payload: order.rawResponse,
+      raw_payload: toJson(order.rawResponse),
     })
     .select()
     .single();
@@ -451,7 +452,7 @@ async function recordWebhookEvent(
     event_type: event,
     provider_event_id: eventKey,
     organization_id: organizationId ?? undefined,
-    payload: rawPayload,
+    payload: toJson(rawPayload),
     is_processed: true,
     processed_at: new Date().toISOString(),
     ...(errorMessage ? { error_message: errorMessage } : {}),
@@ -660,7 +661,7 @@ export async function createPublicCheckout(token: string): Promise<PublicCheckou
         status: 'pending',
         provider: provider.name,
         provider_order_id: order.providerOrderId,
-        raw_payload: order.rawResponse,
+        raw_payload: toJson(order.rawResponse),
       });
 
     if (insertError) {

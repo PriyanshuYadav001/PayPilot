@@ -1,6 +1,7 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import type { PaymentPromise, PromiseStatus } from '../../shared/types';
+import type { Database } from '../../types/database.types';
 
 export class PaymentPromiseError extends Error {
   code: string;
@@ -178,8 +179,8 @@ export async function updatePromise(
     resolvedAt: string;
   }>,
 ): Promise<PaymentPromise | null> {
-  const dbInput: Record<string, unknown> = {};
-  if (input.status !== undefined) dbInput.status = input.status;
+  const dbInput: Database['public']['Tables']['payment_promises']['Update'] = {};
+  if (input.status !== undefined) dbInput.status = input.status as Database['public']['Enums']['promise_status'];
   if (input.promisedDate !== undefined) dbInput.promised_date = input.promisedDate;
   if (input.promisedAmount !== undefined) dbInput.promised_amount = input.promisedAmount;
   if (input.notes !== undefined) dbInput.notes = input.notes;

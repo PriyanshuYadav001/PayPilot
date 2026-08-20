@@ -24,8 +24,7 @@ import { Redirect, Route, Switch, useLocation } from "wouter";
 
 function Router() {
   const { session } = useAuth();
-  const [, navigate] = useLocation();
-  const path = window.location.pathname;
+  const [path, navigate] = useLocation();
   const activeTab: NavigationTab = path.startsWith('/invoices')
     ? 'invoices'
     : path.startsWith('/customers')

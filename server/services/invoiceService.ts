@@ -68,6 +68,23 @@ export class InvoiceService {
 
     const orgId = organizationId;
     if (!orgId) throw new Error('Organization is required');
+    const lineItems = input.items.map((item) => {
+      const subtotal = item.quantity * item.unitPrice;
+      const taxRate = item.taxRate ?? 0;
+      const taxAmount = subtotal * taxRate / 100;
+      return {
+        description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unitPrice,
+        tax_rate: taxRate,
+        tax_amount: taxAmount,
+        total: subtotal + taxAmount,
+      };
+    });
+    const subtotal = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+    const taxTotal = lineItems.reduce((sum, item) => sum + item.tax_amount, 0);
+    const discount = input.discount ?? 0;
+    const totalAmount = Math.max(0, subtotal + taxTotal - discount);
     const { data, error } = await supabaseServer
       .from('invoices')
       .insert({
@@ -77,7 +94,11 @@ export class InvoiceService {
         issue_date: input.issueDate,
         due_date: input.dueDate,
         currency: input.currency ?? 'USD',
-        discount: input.discount ?? 0,
+        subtotal,
+        tax_total: taxTotal,
+        total_amount: totalAmount,
+        amount_due: totalAmount,
+        discount,
         status: input.status ?? 'draft',
         notes: input.notes,
         terms_and_conditions: input.termsAndConditions,
@@ -90,14 +111,10 @@ export class InvoiceService {
       throw error;
     }
 
-    if (input.items.length > 0) {
-      const items = input.items.map((item) => ({
+    if (lineItems.length > 0) {
+      const items = lineItems.map((item) => ({
         invoice_id: data.id,
-        description: item.description,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        tax: item.taxRate ?? 0,
-        total: item.quantity * item.unitPrice,
+        ...item,
       }));
       const { error: itemError } = await supabaseServer.from('invoice_items').insert(items);
       if (itemError) throw itemError;

@@ -12,6 +12,8 @@ import { supabaseServer } from '../../lib/supabaseClient';
 import { logger } from '../../utils/logger';
 import type { Call, CallStatus } from '../../../shared/types';
 import { getCallProvider } from './CallProvider';
+import type { Database, Json } from '../../../types/database.types';
+import { toJson } from '../../utils/json';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -59,7 +61,7 @@ interface CallRow {
   recording_url: string | null;
   transcript?: string | null;
   summary?: string | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: Json;
   started_at?: string | null;
   ended_at?: string | null;
   created_at: string;
@@ -141,7 +143,7 @@ export async function createCall(input: CreateCallInput): Promise<Call> {
       to_number: normalizePhone(input.to),
       status: callResult.status,
       duration_seconds: 0,
-      metadata: input.metadata ?? {},
+      metadata: input.metadata ? toJson(input.metadata) : {},
       started_at: callResult.status === 'in_progress' ? new Date().toISOString() : undefined,
     })
     .select('*')
@@ -203,7 +205,7 @@ export async function getCallStatus(callId: string, organizationId: string): Pro
     const mappedStatus = (statusMap[statusResult.status] ?? statusResult.status) as CallStatus;
 
     // Update local record
-    const updateData: Record<string, unknown> = { status: mappedStatus };
+    const updateData: Database['public']['Tables']['calls']['Update'] = { status: mappedStatus };
     if (statusResult.startedAt) updateData.started_at = statusResult.startedAt.toISOString();
     if (statusResult.endedAt) updateData.ended_at = statusResult.endedAt.toISOString();
     if (statusResult.durationSeconds !== undefined) updateData.duration_seconds = statusResult.durationSeconds;
@@ -248,7 +250,7 @@ export async function getCallResult(callId: string, organizationId: string): Pro
       const recording = await provider.getCallRecording(callRow.provider_call_id);
 
       if (recording) {
-        const updateData: Record<string, unknown> = {
+        const updateData: Database['public']['Tables']['calls']['Update'] = {
           recording_url: recording.recordingUrl,
           duration_seconds: recording.durationSeconds,
         };
@@ -283,10 +285,10 @@ export async function updateCallResult(
   organizationId: string,
   data: { transcript?: string; summary?: string; metadata?: Record<string, unknown> },
 ): Promise<Call | null> {
-  const updateData: Record<string, unknown> = {};
+  const updateData: Database['public']['Tables']['calls']['Update'] = {};
   if (data.transcript !== undefined) updateData.transcript = data.transcript;
   if (data.summary !== undefined) updateData.summary = data.summary;
-  if (data.metadata !== undefined) updateData.metadata = data.metadata;
+  if (data.metadata !== undefined) updateData.metadata = toJson(data.metadata);
 
   if (Object.keys(updateData).length === 0) return null;
 

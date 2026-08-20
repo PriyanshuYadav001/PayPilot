@@ -1,6 +1,8 @@
 import { supabaseServer } from '../lib/supabaseClient';
 import { logger } from '../utils/logger';
 import type { Customer } from '../../shared/types';
+import type { Database, Json } from '../../types/database.types';
+import { toJson } from '../utils/json';
 
 export interface CustomerListParams {
   page: number;
@@ -44,6 +46,10 @@ function sanitizeSearchTerm(term: string): string {
   return term.replace(/[^a-zA-Z0-9@._\s-]/g, '').trim();
 }
 
+function optionalString(value: unknown): string | undefined {
+  return value === undefined || value === null ? undefined : String(value);
+}
+
 function mapRow(row: Record<string, unknown>): Customer {
   return {
     id: row.id as string,
@@ -64,35 +70,39 @@ function mapRow(row: Record<string, unknown>): Customer {
   };
 }
 
-function toCreatePayload(input: Record<string, unknown>): Record<string, unknown> {
+function toCreatePayload(
+  input: Record<string, unknown>,
+  organizationId: string,
+): Database['public']['Tables']['customers']['Insert'] {
   return {
-    company_name: input.companyName,
-    contact_name: input.contactName,
-    email: input.email,
-    ...(input.phone !== undefined ? { phone: input.phone } : {}),
-    ...(input.whatsappNumber !== undefined ? { whatsapp_number: input.whatsappNumber } : {}),
-    ...(input.gstin !== undefined ? { gstin: input.gstin } : {}),
-    billing_address: input.billingAddress ?? {},
-    credit_period_days: input.creditPeriodDays ?? 30,
-    is_dnd: input.isDnd ?? false,
-    ...(input.notes !== undefined ? { notes: input.notes } : {}),
-    metadata: input.metadata ?? {},
+    organization_id: organizationId,
+    company_name: String(input.companyName ?? ''),
+    contact_name: String(input.contactName ?? ''),
+    email: String(input.email ?? ''),
+    ...(input.phone !== undefined ? { phone: optionalString(input.phone) } : {}),
+    ...(input.whatsappNumber !== undefined ? { whatsapp_number: optionalString(input.whatsappNumber) } : {}),
+    ...(input.gstin !== undefined ? { gstin: optionalString(input.gstin) } : {}),
+    billing_address: toJson(input.billingAddress ?? {}),
+    credit_period_days: Number(input.creditPeriodDays ?? 30),
+    is_dnd: Boolean(input.isDnd ?? false),
+    ...(input.notes !== undefined ? { notes: optionalString(input.notes) } : {}),
+    metadata: toJson(input.metadata ?? {}),
   };
 }
 
-function toUpdatePayload(input: Record<string, unknown>): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
-  if (input.companyName !== undefined) payload.company_name = input.companyName;
-  if (input.contactName !== undefined) payload.contact_name = input.contactName;
-  if (input.email !== undefined) payload.email = input.email;
-  if (input.phone !== undefined) payload.phone = input.phone;
-  if (input.whatsappNumber !== undefined) payload.whatsapp_number = input.whatsappNumber;
-  if (input.gstin !== undefined) payload.gstin = input.gstin;
-  if (input.billingAddress !== undefined) payload.billing_address = input.billingAddress;
-  if (input.creditPeriodDays !== undefined) payload.credit_period_days = input.creditPeriodDays;
-  if (input.isDnd !== undefined) payload.is_dnd = input.isDnd;
-  if (input.notes !== undefined) payload.notes = input.notes;
-  if (input.metadata !== undefined) payload.metadata = input.metadata;
+function toUpdatePayload(input: Record<string, unknown>): Database['public']['Tables']['customers']['Update'] {
+  const payload: Database['public']['Tables']['customers']['Update'] = {};
+  if (input.companyName !== undefined) payload.company_name = String(input.companyName);
+  if (input.contactName !== undefined) payload.contact_name = String(input.contactName);
+  if (input.email !== undefined) payload.email = String(input.email);
+  if (input.phone !== undefined) payload.phone = String(input.phone);
+  if (input.whatsappNumber !== undefined) payload.whatsapp_number = String(input.whatsappNumber);
+  if (input.gstin !== undefined) payload.gstin = String(input.gstin);
+  if (input.billingAddress !== undefined) payload.billing_address = toJson(input.billingAddress);
+  if (input.creditPeriodDays !== undefined) payload.credit_period_days = Number(input.creditPeriodDays);
+  if (input.isDnd !== undefined) payload.is_dnd = Boolean(input.isDnd);
+  if (input.notes !== undefined) payload.notes = String(input.notes);
+  if (input.metadata !== undefined) payload.metadata = toJson(input.metadata);
   return payload;
 }
 
@@ -179,7 +189,7 @@ export async function createCustomer(
 ): Promise<Customer> {
   const { data, error } = await supabaseServer
     .from('customers')
-    .insert({ ...toCreatePayload(input), organization_id: organizationId })
+    .insert(toCreatePayload(input, organizationId))
     .select()
     .single();
 

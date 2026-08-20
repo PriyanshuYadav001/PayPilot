@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,emerald\" \"npm run server\" \"npm run client\"",
-    "client": "vite --config client/vite.config.ts client",
+    "client": "vite --config client/vite.config.mts client",
     "server": "tsx watch server/index.ts",
     "worker": "tsx watch server/jobs/worker.ts",
     "build": "npm run build:client && npm run build:server",
