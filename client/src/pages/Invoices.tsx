@@ -1028,7 +1028,7 @@ export const Invoices: React.FC = () => {
                         </td>
                         <td className="px-2 py-2 text-slate-300 uppercase">{payment.method}</td>
                         <td className="px-2 py-2 text-right text-slate-300">
-                          {new Date(payment.paidAt).toLocaleString()}
+                          {payment.paidAt ? new Date(payment.paidAt).toLocaleString() : '—'}
                         </td>
                       </tr>
                     ))}
@@ -1056,3 +1056,5 @@ export const Invoices: React.FC = () => {
     </div>
   );
 };
+
+export default Invoices;

@@ -1,7 +1,7 @@
 import React from 'react';
-import { LayoutDashboard, FileText, Users, Clock, Settings, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, Users, Clock, Settings, ShieldCheck, CreditCard } from 'lucide-react';
 
-export type NavigationTab = 'dashboard' | 'invoices' | 'customers' | 'followups' | 'settings';
+export type NavigationTab = 'dashboard' | 'invoices' | 'customers' | 'payments' | 'followups' | 'settings';
 
 interface SidebarProps {
   activeTab: NavigationTab;
@@ -13,6 +13,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onTabChange }) => {
     { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'invoices' as const, label: 'Invoices', icon: FileText },
     { id: 'customers' as const, label: 'Customers', icon: Users },
+    { id: 'payments' as const, label: 'Payments', icon: CreditCard },
     { id: 'followups' as const, label: 'Follow-ups', icon: Clock },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
